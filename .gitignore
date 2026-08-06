@@ -69,3 +69,8 @@ data/
 *.tmp
 Thumbs.db
 desktop.ini
+
+# Release tooling and static-site leftovers live outside the app repository.
+scripts/
+installer/
+public/
