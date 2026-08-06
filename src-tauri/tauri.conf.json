@@ -1,7 +1,7 @@
 {
     "$schema":  "https://schema.tauri.app/config/2",
     "productName":  "meridian",
-    "version":  "1.0.13",
+    "version":  "1.0.0",
     "identifier":  "com.root.meridian",
     "build":  {
                   "beforeDevCommand":  "npm run dev",
