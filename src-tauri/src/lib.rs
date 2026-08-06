@@ -13,6 +13,27 @@ const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-chat";
 const PROVIDER_KEY_SERVICE: &str = "com.meridian.providers";
 
+#[tauri::command]
+async fn browser_open_login(app: AppHandle, provider: String, url: String) -> Result<String, String> {
+    let safe = provider.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
+    if safe.is_empty() || !(url.starts_with("https://")) { return Err("Invalid browser provider or URL".into()); }
+    let profile = app.path().app_data_dir().map_err(|e| e.to_string())?.join("browser-profiles").join(safe);
+    fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    {
+        let candidates = [
+            std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
+            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
+            std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
+        ];
+        let browser = candidates.iter().find(|path| Path::new(path).exists()).ok_or("Chrome or Edge was not found")?;
+        Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg(url).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    { Command::new("google-chrome").arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg(url).spawn().map_err(|e| e.to_string())?; }
+    Ok(profile.to_string_lossy().into_owned())
+}
+
 fn provider_env_name(provider: &str) -> Result<&'static str, String> {
     match provider {
         "openai" => Ok("OPENAI_API_KEY"),
@@ -2800,6 +2821,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            browser_open_login,
 chat_stream,
             save_provider_key,
             provider_connections,
