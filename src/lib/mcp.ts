@@ -1,8 +1,3 @@
-/**
- * MCP (Model Context Protocol) client for Meridian.
- * Supports stdio (spawn process) and HTTP/SSE transports.
- * Communicates via Tauri commands for process management.
- */
 
 import { invoke } from "@tauri-apps/api/core";
 import type { McpServer, McpTool } from "../types";
@@ -52,14 +47,13 @@ async function discoverToolsWithRetry(
   return tools;
 }
 
-// ─── MCP Preset catalog ───────────────────────────────────────────────────────
 
 export const MCP_PRESETS = [
   {
     id: "roblox-studio",
     name: "Roblox Studio",
-    description: "Control Roblox Studio — read/write scripts, manage instances, run commands in Studio",
-    icon: "🎮",
+    description: "Control Roblox Studio â€” read/write scripts, manage instances, run commands in Studio",
+    icon: "ðŸŽ®",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "%LOCALAPPDATA%\\Roblox\\mcp.bat"],
@@ -69,7 +63,7 @@ export const MCP_PRESETS = [
     id: "filesystem",
     name: "Filesystem",
     description: "Enhanced file operations beyond the built-in tools",
-    icon: "📁",
+    icon: "ðŸ“",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "npx -y @modelcontextprotocol/server-filesystem {rootPath}"],
@@ -81,7 +75,7 @@ export const MCP_PRESETS = [
     id: "github",
     name: "GitHub",
     description: "Read repos, issues, PRs, and code via GitHub API",
-    icon: "🐙",
+    icon: "ðŸ™",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "npx -y @modelcontextprotocol/server-github"],
@@ -93,7 +87,7 @@ export const MCP_PRESETS = [
     id: "brave-search",
     name: "Brave Search",
     description: "Web search via Brave Search API",
-    icon: "🔍",
+    icon: "ðŸ”",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "npx -y @modelcontextprotocol/server-brave-search"],
@@ -105,7 +99,7 @@ export const MCP_PRESETS = [
     id: "postgres",
     name: "PostgreSQL",
     description: "Query and inspect PostgreSQL databases",
-    icon: "🐘",
+    icon: "ðŸ˜",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "npx -y @modelcontextprotocol/server-postgres {connectionString}"],
@@ -117,7 +111,7 @@ export const MCP_PRESETS = [
     id: "sqlite",
     name: "SQLite",
     description: "Read and query SQLite database files",
-    icon: "🗄",
+    icon: "ðŸ—„",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "npx -y @modelcontextprotocol/server-sqlite --db-path {dbPath}"],
@@ -128,8 +122,8 @@ export const MCP_PRESETS = [
   {
     id: "puppeteer",
     name: "Puppeteer",
-    description: "Control a browser — navigate, screenshot, interact with web pages",
-    icon: "🌐",
+    description: "Control a browser â€” navigate, screenshot, interact with web pages",
+    icon: "ðŸŒ",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "npx -y @modelcontextprotocol/server-puppeteer"],
@@ -139,7 +133,7 @@ export const MCP_PRESETS = [
     id: "memory",
     name: "MCP Memory",
     description: "Persistent knowledge graph memory across sessions",
-    icon: "🧠",
+    icon: "ðŸ§ ",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "npx -y @modelcontextprotocol/server-memory"],
@@ -149,7 +143,7 @@ export const MCP_PRESETS = [
     id: "custom-http",
     name: "Custom HTTP",
     description: "Connect to any MCP server over HTTP or SSE",
-    icon: "🔌",
+    icon: "ðŸ”Œ",
     transport: "http" as const,
     requiresConfig: [
       { key: "url", label: "Server URL", placeholder: "http://localhost:3000/mcp" },
@@ -157,7 +151,6 @@ export const MCP_PRESETS = [
   },
 ];
 
-// ─── JSON-RPC helpers ─────────────────────────────────────────────────────────
 
 let _rpcId = 1;
 function nextId() { return _rpcId++; }
@@ -170,7 +163,6 @@ function makeNotification(method: string, params?: unknown) {
   return { jsonrpc: "2.0", method, params: params ?? {} };
 }
 
-// ─── HTTP transport ───────────────────────────────────────────────────────────
 
 async function httpCall(url: string, method: string, params?: unknown): Promise<unknown> {
   const res = await fetch(url, {
@@ -193,7 +185,6 @@ async function httpNotify(url: string, method: string, params?: unknown): Promis
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
 }
 
-// ─── Stdio transport (via Tauri) ──────────────────────────────────────────────
 
 async function stdioCall(serverId: string, method: string, params?: unknown): Promise<unknown> {
   return invoke<unknown>("mcp_call", {
@@ -211,7 +202,6 @@ async function stdioNotify(serverId: string, method: string, params?: unknown): 
   });
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
   if (server.transport === "stdio") {
@@ -222,7 +212,6 @@ export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
         : { running: false, initialized: false };
 
       if (!isRoblox || !processState.running) {
-        // Spawn the process via Tauri
         await invoke("mcp_spawn", {
           serverId: server.id,
           command: server.command ?? "",
@@ -233,7 +222,6 @@ export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
       }
 
       if (!processState.initialized) {
-        // Initialize
         await stdioCall(server.id, "initialize", {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
@@ -242,7 +230,6 @@ export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
         await stdioNotify(server.id, "notifications/initialized", {});
       }
 
-      // Discover tools
       const tools = await discoverToolsWithRetry(
         () => stdioCall(server.id, "tools/list", {}) as Promise<{ tools?: McpTool[] }>,
         isRoblox,
@@ -258,7 +245,6 @@ export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
       throw err;
     }
   } else {
-    // HTTP/SSE
     const url = server.url!;
     await httpCall(url, "initialize", {
       protocolVersion: "2024-11-05",
@@ -308,21 +294,19 @@ export function mcpToolResultToText(result: McpToolResult): string {
     .join("\n");
 }
 
-// Build system prompt section for active MCP tools
-// Includes full inputSchema so agent uses correct parameter names
 export function buildMcpToolsPrompt(servers: McpServer[]): string {
   const active = servers.filter(s => s.enabled && s.status === "connected" && s.tools?.length);
   if (!active.length) return "";
 
   const lines: string[] = [
-    "\n══════════════════════════════════════════",
-    "MCP TOOLS — External integrations",
-    "══════════════════════════════════════════",
+    "\nâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•",
+    "MCP TOOLS â€” External integrations",
+    "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•",
     "CRITICAL RULES:",
-    "1. Use the EXACT parameter names from the schema below — no substitutions.",
+    "1. Use the EXACT parameter names from the schema below â€” no substitutions.",
     "2. Array parameters (e.g. edits, properties) MUST be valid JSON arrays: [{...}, {...}]",
     "3. Object parameters MUST be valid JSON objects: {\"key\": \"value\"}",
-    "4. DO NOT wrap arrays/objects in quotes — they must be raw JSON, not strings.",
+    "4. DO NOT wrap arrays/objects in quotes â€” they must be raw JSON, not strings.",
     "5. For Roblox Studio: multi_edit requires the script to ALREADY EXIST.",
     "   To CREATE a new script, use execute_luau with Instance.new() instead.",
     "",
@@ -336,20 +320,18 @@ export function buildMcpToolsPrompt(servers: McpServer[]): string {
   ];
 
   for (const server of active) {
-    lines.push(`── ${server.name} (id: ${server.id}) ──`);
+    lines.push(`â”€â”€ ${server.name} (id: ${server.id}) â”€â”€`);
 
-    // Per-server settings hints
     const cfg = server.settings;
     if (cfg) {
       const hints: string[] = [];
       if (cfg.casing) hints.push(`Use ${cfg.casing} naming convention for identifiers`);
       if (cfg.includeComments) hints.push("Include descriptive comments in generated code");
-      else hints.push("Do NOT include comments in generated code — keep it concise");
+      else hints.push("Do NOT include comments in generated code â€” keep it concise");
       if (cfg.useModuleScripts) hints.push("Prefer ModuleScript over Script/LocalScript where appropriate");
       if (cfg.maxResults) hints.push(`Limit search/list results to ${cfg.maxResults} items`);
       if (hints.length) lines.push(`Settings: ${hints.join(". ")}.`);
     } else {
-      // Apply sensible defaults even without explicit settings
       lines.push("Settings: Use camelCase naming. Do NOT include comments.");
     }
     for (const tool of server.tools ?? []) {
@@ -365,7 +347,7 @@ export function buildMcpToolsPrompt(servers: McpServer[]): string {
         for (const [paramName, paramDef] of Object.entries(schema.properties)) {
           const req = required.has(paramName) ? " (REQUIRED)" : " (optional)";
           const type = paramDef.type ?? "string";
-          const desc = paramDef.description ? ` — ${paramDef.description}` : "";
+          const desc = paramDef.description ? ` â€” ${paramDef.description}` : "";
           const isArray = type === "array";
           lines.push(`  ${paramName}${req}: ${type}${isArray ? " [pass as JSON array]" : ""}${desc}`);
         }
@@ -374,6 +356,6 @@ export function buildMcpToolsPrompt(servers: McpServer[]): string {
     lines.push("");
   }
 
-  lines.push("══════════════════════════════════════════\n");
+  lines.push("â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n");
   return lines.join("\n");
 }

@@ -181,11 +181,6 @@ export interface ApprovalSettings {
 	requireFileRead: boolean;
 }
 
-// A rule that auto-approves or auto-denies a run-command invocation when the
-// command text matches the pattern according to `match`:
-//   - "exact":  full command string equals `pattern` (trimmed)
-//   - "prefix": command starts with `pattern` (trimmed, e.g. "git pull origin")
-//   - "base":   the first whitespace-separated token equals `pattern` (e.g. "npm")
 export interface CommandRule {
 	id: string;
 	pattern: string;

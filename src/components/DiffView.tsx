@@ -6,7 +6,6 @@ type DiffOp =
 	| { kind: "add"; line: string; bLine: number }
 	| { kind: "del"; line: string; aLine: number };
 
-// Standard LCS-based line diff. O(n*m) memory â fine for typical edit payloads.
 function diffLines(a: string[], b: string[]): DiffOp[] {
 	const n = a.length;
 	const m = b.length;
@@ -39,7 +38,6 @@ function diffLines(a: string[], b: string[]): DiffOp[] {
 	return ops;
 }
 
-// Compress long context runs into 3-line windows around each change.
 function collapseContext(ops: DiffOp[], windowSize = 3): (DiffOp | { kind: "gap"; count: number })[] {
 	const keep = new Array(ops.length).fill(false);
 	for (let i = 0; i < ops.length; i++) {

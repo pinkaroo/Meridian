@@ -18,7 +18,6 @@ const LightboxContext = createContext<LightboxContextValue | null>(null);
 export function useLightbox() {
 	const ctx = useContext(LightboxContext);
 	if (!ctx) {
-		// Safe fallback so components don't crash if provider isn't mounted yet
 		return {
 			open: () => {},
 			openSingle: () => {},
@@ -88,7 +87,6 @@ function LightboxOverlay({
 			else if (e.key === "ArrowRight" && images.length > 1) { e.preventDefault(); onNext(); }
 		}
 		window.addEventListener("keydown", onKey);
-		// Lock body scroll while open
 		const prevOverflow = document.body.style.overflow;
 		document.body.style.overflow = "hidden";
 		return () => {

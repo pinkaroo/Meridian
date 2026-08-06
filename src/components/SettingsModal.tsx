@@ -531,7 +531,7 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 			<>
 				<SectionTitle>Command Rules</SectionTitle>
 				<p className="mb-2 text-xs text-muted-foreground">
-					Auto-approve or auto-deny shell commands without prompting. Rules are checked in order — the first match wins. Only applies when run-command approval is enabled above.
+					Auto-approve or auto-deny shell commands without prompting. Rules are checked in order â€” the first match wins. Only applies when run-command approval is enabled above.
 				</p>
 
 				<div className="mb-3 rounded-md border border-border bg-muted/20 p-2.5">
@@ -584,7 +584,7 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 							</Badge>
 							<span className="shrink-0 text-[0.65rem] uppercase tracking-wide text-muted-foreground">{matchLabels[r.match]}</span>
 							<code className="min-w-0 flex-1 truncate font-mono text-xs">{r.pattern}</code>
-							<Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => moveUp(idx)} disabled={idx === 0} title="Move up">↑</Button>
+							<Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => moveUp(idx)} disabled={idx === 0} title="Move up">â†‘</Button>
 							<Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => remove(r.id)} title="Delete">
 								<Trash2 className="h-3.5 w-3.5" />
 							</Button>
@@ -682,7 +682,7 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 					desc="Chat message font size"
 					control={
 						<div className="flex items-center gap-2">
-							<Button size="sm" variant="outline" onClick={() => onUpdate({ fontSize: Math.max(11, settings.fontSize - 1) })} className="h-7 w-7 p-0">−</Button>
+							<Button size="sm" variant="outline" onClick={() => onUpdate({ fontSize: Math.max(11, settings.fontSize - 1) })} className="h-7 w-7 p-0">âˆ’</Button>
 							<span className="min-w-10 text-center text-sm">{settings.fontSize}px</span>
 							<Button size="sm" variant="outline" onClick={() => onUpdate({ fontSize: Math.min(20, settings.fontSize + 1) })} className="h-7 w-7 p-0">+</Button>
 						</div>
@@ -753,10 +753,6 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 		}
 
 		async function wipeConversationFiles(predicate: (c: any) => boolean): Promise<void> {
-			// Wipe matching on-disk conversation files. Conversations are stored
-			// one-per-file under <AppData>/conversations/<id>.json, so we need
-			// the Tauri fs plugin -- localStorage.clear() alone does nothing for
-			// them and they would reappear after reload.
 			try {
 				const fs = await import("@tauri-apps/plugin-fs");
 				const { BaseDirectory } = await import("@tauri-apps/api/path");
@@ -772,8 +768,6 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 							await fs.remove("conversations/" + entry.name, { baseDir: BaseDirectory.AppData });
 						}
 					} catch {
-						// Unreadable / unparseable -- only remove if user requested
-						// to wipe everything in conversations bucket.
 						if (predicate({ deleted: false, archived: false })) {
 							try { await fs.remove("conversations/" + entry.name, { baseDir: BaseDirectory.AppData }); } catch {}
 						}
@@ -790,9 +784,6 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 			setClearing(true);
 			setClearError(null);
 			try {
-				// On-disk conversation files first -- these are the ones
-				// previously surviving a "Clear data" because the old handler
-				// only touched localStorage.
 				const wantsActive = clearTargets.conversations;
 				const wantsTrash = clearTargets.trash;
 				const wantsArchive = clearTargets.archive;
@@ -805,7 +796,6 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 					});
 				}
 
-				// Legacy localStorage conversations (pre-disk migration).
 				if (wantsActive && wantsTrash && wantsArchive) {
 					localStorage.removeItem("conversations");
 				} else {
@@ -829,7 +819,6 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 				if (clearTargets.settings) {
 					localStorage.removeItem("settings");
 				} else if (clearTargets.memories) {
-					// Wipe memories without nuking settings.
 					try {
 						const raw = localStorage.getItem("settings");
 						if (raw) {
@@ -840,9 +829,6 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 					} catch {}
 				}
 
-				// If everything conversation-related was cleared, drop the
-				// active-conversation pointer too, otherwise the UI may briefly
-				// reference a non-existent id.
 				if (wantsActive || wantsTrash || wantsArchive) {
 					localStorage.removeItem("activeConvId");
 				}
@@ -948,7 +934,7 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 							}
 						}}
 					>
-						View releases on GitHub ↗
+						View releases on GitHub â†—
 					</Button>
 				</div>
 			</div>

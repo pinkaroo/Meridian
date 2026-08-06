@@ -12,8 +12,6 @@ export default function ThinkingBlock({ text, streaming }: ThinkingBlockProps) {
 	const [collapsed, setCollapsed] = useState(true);
 	const liveLabel = text.trim().split(/\n+/).find(Boolean)?.trim() || "Planning the next step";
 
-	// Keep details open until the user explicitly collapses them. Automatically
-	// closing after completion made the activity drawer feel unstable.
 
 	return (
 		<div className="thinking-row my-1 overflow-hidden">
@@ -26,7 +24,7 @@ export default function ThinkingBlock({ text, streaming }: ThinkingBlockProps) {
 				<div className="overflow-hidden">
 					<div className="border-t border-border/40 px-1 py-2">
 						<div className="text-xs leading-relaxed text-muted-foreground [&_code]:font-mono [&_code]:text-primary [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted/50 [&_pre]:p-2">
-							<MarkdownRenderer content={text || "_Planning…_"} />
+							<MarkdownRenderer content={text || "_Planningâ€¦_"} />
 							{streaming && <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-foreground/70 align-middle" />}
 						</div>
 					</div>

@@ -37,7 +37,6 @@ function makeConversationTitle(text: string, attachmentName?: string) {
 	if (!source) return "New conversation";
 	if (attachmentName && !text.trim()) return attachmentName.replace(/\.[^.]+$/, "").slice(0, 48);
 	let words = source.replace(/[.!?]+$/g, "").split(" ").filter(Boolean);
-	// Turn conversational prompts into compact topic labels.
 	words = words.filter((word, index) => {
 		const normalized = word.toLowerCase().replace(/[^a-z0-9'-]/g, "");
 		if (index < 3 && ["can", "could", "would", "please", "help", "i", "me", "hey", "hi", "just", "make", "fix", "add", "write", "show", "tell"].includes(normalized)) return false;
@@ -84,9 +83,6 @@ Merge,
 
 export default function App() {
 	const store = useAppStore();
-	// Seed the bundled skills into the app data directory on first launch so
-	// built-in skills work in packaged Tauri builds without requiring a manual
-	// skills path. Existing user-installed skills are preserved.
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
@@ -97,12 +93,10 @@ export default function App() {
 					store.updateSettings({ skillsGlobalRoot: root });
 				}
 			} catch {
-				// Browser/Vite development mode has no Tauri resource directory.
 			}
 		})();
 		return () => { cancelled = true; };
 	}, [store.settings.skillsGlobalRoot]);
-	// Track last-known upstream state to only toast on transitions, not every turn.
 	const lastNoticeStateRef = useRef<string | null>(null);
 	useEffect(() => {
 		let unlisten: (() => void) | null = null;
@@ -150,9 +144,6 @@ const [chatMode, setChatMode] = useState<"normal" | "merge" | "websearch">("norm
 			}
 		} catch {}
 	}, []);
-	// Mirrored in a ref so handleSend reads the latest value and we can reset
-	// the toggle back to "normal" immediately after dispatching, without
-	// invalidating the handleSend callback identity.
 	const chatModeRef = useRef<"normal" | "merge" | "websearch">("normal");
 	useEffect(() => { chatModeRef.current = chatMode; }, [chatMode]);
 	function toggleMode(mode: "merge" | "websearch") {
@@ -169,7 +160,6 @@ const [chatMode, setChatMode] = useState<"normal" | "merge" | "websearch">("norm
 	const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
 
 const messagesContainerRef = useRef<HTMLDivElement>(null);
-	// Fresh store snapshot for callbacks that would otherwise capture stale state.
 	const storeRef = useRef(store);
 	useEffect(() => { storeRef.current = store; });
 	const [showScrollDown, setShowScrollDown] = useState(false);
@@ -190,9 +180,6 @@ const messagesContainerRef = useRef<HTMLDivElement>(null);
 			return n + 1;
 		}, 0);
 		return `live:${conv.id}:${msgs.length}:${last.content.length}:${segLen}`;
-		// Depend on a derived signal of the last message rather than the whole
-		// messages array reference — keystrokes in another conversation's draft
-		// no longer invalidate this memo.
 	}, [
 		store.activeConversation?.id,
 		store.activeConversation?.messages.length,
@@ -294,7 +281,6 @@ useEffect(() => {
 			if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setShowCommandPalette(v => !v); }
 			if (e.key === "Escape") { setShowCommandPalette(false); setShowGlobalSearch(false); setShowInConvSearch(false); }
 			if ((e.ctrlKey || e.metaKey) && e.key === "/") { e.preventDefault(); setShowCommandPalette(true); }
-			// Let users start typing without hunting for the composer.
 			if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
 				const target = e.target as HTMLElement | null;
 				if (!target || !["INPUT", "TEXTAREA"].includes(target.tagName)) {
@@ -367,9 +353,6 @@ useEffect(() => {
 		activeAssistantIds.current.delete(convId);
 	}
 
-	// Shared queue-drain: called from every completion path (normal agent onDone,
-	// merge success/error, websearch success/error). Without this, merge/websearch
-	// would never trigger queued messages to fire.
 	const executeAgentRef = useRef<((convId: string, text: string, attachments?: Attachment[], mode?: "normal" | "merge" | "websearch", options?: { isContinuation?: boolean; continuePriorText?: string }) => Promise<void>) | null>(null);
 	function drainQueue(convId: string, convTitle: string) {
 		const next = store.dequeueMessage(convId);
@@ -426,8 +409,6 @@ function handleNewConversation(mode?: "agent" | "chat") {
 	function handleSelectConversation(id: string) { store.setActiveConversationId(id); }
 	function handleSelectWorkspace(id: string) { store.setActiveWorkspaceId(id); store.setActiveConversationId(null); }
 	function handleModeTabChange(mode: "agent" | "chat") {
-		// Remember the currently-active conv as the last-for-current-mode
-		// before switching, so coming back to this tab restores it.
 		const currentActive = store.activeConversationId;
 		if (currentActive) {
 			lastConvByModeRef.current = { ...lastConvByModeRef.current, [modeTab]: currentActive };
@@ -435,7 +416,6 @@ function handleNewConversation(mode?: "agent" | "chat") {
 		setModeTab(mode);
 		try { localStorage.setItem("meridian.modeTab", mode); } catch {}
 		try { localStorage.setItem("meridian.lastConvByMode", JSON.stringify(lastConvByModeRef.current)); } catch {}
-		// Restore the last conv for the target mode if it still exists and matches the mode.
 		const lastId = lastConvByModeRef.current[mode];
 		const restored = lastId ? storeRef.current.conversations.find(c => c.id === lastId && !c.deleted && !c.archived && (c.mode ?? "agent") === mode) : null;
 		if (restored) {
@@ -444,8 +424,6 @@ function handleNewConversation(mode?: "agent" | "chat") {
 			store.setActiveConversationId(null);
 		}
 	}
-// Keep modeTab synced when user clicks an existing conv from the sidebar.
-	// Also remember it as the last conv for its mode so tab-switching restores it.
 	useEffect(() => {
 		const active = store.activeConversation;
 		if (active) {
@@ -524,10 +502,7 @@ const s = storeRef.current;
 				attachments: attachments && attachments.length > 0 ? attachments : undefined,
 			};
 			store.addMessage(convId, userMsg);
-			// Title is already set by handleSend on the first message; no double-title here.
 
-			// Create the streaming assistant bubble BEFORE invoke so the "agent working"
-			// dots and elapsed timer kick in immediately. Deltas accumulate via Tauri events.
 			const assistantId = crypto.randomUUID();
 			const assistantMsg = {
 				id: assistantId,
@@ -537,9 +512,6 @@ const s = storeRef.current;
 				chatMode: "merge" as const,
 				model: "Merge",
 				streaming: true,
-				// No seed segment — let the first delta create it. With an empty
-				// seed segment, StreamingTextV2 renders a blinking cursor that
-				// visually competes with the bouncing dots.
 			};
 			store.addMessage(convId, assistantMsg);
 			activeAssistantIds.current.set(convId, assistantId);
@@ -548,9 +520,6 @@ const s = storeRef.current;
 				setElapsedTimes(prev => ({ ...prev, [assistantId]: Date.now() - startMs }));
 			}
 
-			// Yield to the browser so React paints the streaming bubble (with dots)
-			// before we start the network call. Without this yield, fast responses
-			// can batch the add+update into a single render and the dots never show.
 			await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
 			const { invoke } = await import("@tauri-apps/api/core");
@@ -582,7 +551,6 @@ const s = storeRef.current;
 				const result = await invoke<string>("chat_merge", { message: text });
 				unlistenStatus();
 				unlistenDelta();
-				// Finalize with the canonical returned string (defensive against any dropped deltas).
 				store.updateMessageWith(convId, assistantId, (m) => ({
 					...m,
 					content: result,
@@ -614,10 +582,7 @@ const s = storeRef.current;
 				attachments: attachments && attachments.length > 0 ? attachments : undefined,
 			};
 			store.addMessage(convId, userMsg);
-			// Title is already set by handleSend on the first message; no double-title here.
 
-			// Create the streaming placeholder bubble immediately so the loading
-			// dots and elapsed timer kick in while we wait on chat_surf.
 			const assistantId = crypto.randomUUID();
 			const assistantMsg = {
 				id: assistantId,
@@ -635,8 +600,6 @@ const s = storeRef.current;
 				setElapsedTimes(prev => ({ ...prev, [assistantId]: Date.now() - startMs }));
 			}
 
-			// Yield to the browser so React paints the streaming bubble (with dots)
-			// before we start the network call.
 			await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
 			const { invoke } = await import("@tauri-apps/api/core");
@@ -784,9 +747,6 @@ onConsumeQueued: () => {
 					store.updateConversation(convId, { title: cleanTitle });
 					store.updateMessageWith(convId, firstAssistantMessage.id, (message) => ({ ...message, content: message.content.replace(titleMarker[0], "").trim() }));
 				} else if (firstAssistantMessage && firstUser) {
-					// Provider fallback when the model declines the metadata instruction:
-					// derive a short topic from the completed answer rather than copying
-					// the user's prompt verbatim.
 					const fallback = firstAssistant.split(/[.!?\n]/)[0].split(/\s+/).filter(Boolean).slice(0, 5).join(" ").replace(/[^\w\s'-]/g, "").trim();
 					const cleanedFallback = cleanAITitle(fallback);
 					if (cleanedFallback !== "New conversation" && cleanedFallback.length > 2) store.updateConversation(convId, { title: cleanedFallback.charAt(0).toUpperCase() + cleanedFallback.slice(1) });
@@ -812,7 +772,6 @@ onConsumeQueued: () => {
 		storeRef.current = { ...storeRef.current, settings: { ...storeRef.current.settings, approvals } };
 	}, [store]);
 
-	// Wire the ref so drainQueue (defined above executeAgent) can call the latest executeAgent.
 useEffect(() => {
 		executeAgentRef.current = executeAgent;
 	}, [executeAgent]);
@@ -827,11 +786,7 @@ const handleSend = useCallback(async (text: string, attachments?: Attachment[]) 
 				store.updateConversation(conv.id, { workspaceId: store.activeWorkspaceId });
 			}
 store.setActiveConversationId(conv.id);
-			// Sync storeRef immediately so executeAgent's lookup sees the fresh conv
-			// on this same tick (the render-driven storeRef update hasn't fired yet).
 			storeRef.current = { ...storeRef.current, conversations: [...storeRef.current.conversations, conv] };
-			// Force auto-scroll on first message of a fresh conv - the conv-switch
-			// effect scrolls an empty container before the message lands, so re-arm here.
 			autoFollowRef.current = true;
 			requestAnimationFrame(() => {
 				const el = messagesContainerRef.current;
@@ -842,7 +797,6 @@ store.setActiveConversationId(conv.id);
 		const wasEmpty = conv.messages.length === 0;
 
 		if (wasEmpty) {
-			// Provisional title from the first message — replaced by AI-generated title shortly after
 			const title = makeConversationTitle(text, attachments?.[0]?.name);
 			store.updateConversation(convId, { title });
 		}
@@ -937,11 +891,6 @@ store.setActiveConversationId(conv.id);
 		return "";
 	})();
 
-// Keyboard shortcuts for the approval panel:
-	//   Y or Enter -> approve the oldest pending approval
-	//   N or Escape -> deny it
-	// Skip when the user is typing in an input/textarea/contentEditable, so
-	// these keys still work normally inside the chat box and other fields.
 	useEffect(() => {
 		if (activeApprovals.length === 0) return;
 		const handler = (e: KeyboardEvent) => {
@@ -1644,9 +1593,9 @@ function UpdateBanner({
 			)}
 			<Download className="h-4 w-4" />
 			<span className="flex-1 text-sm font-medium">
-				{state === "idle" && <>Update available: <strong>v{info.currentVersion}</strong> → <strong>v{info.latestVersion}</strong></>}
-				{state === "downloading" && <>Downloading update… {progress}%</>}
-				{state === "launching" && <>Installing — Meridian will restart automatically…</>}
+				{state === "idle" && <>Update available: <strong>v{info.currentVersion}</strong> â†’ <strong>v{info.latestVersion}</strong></>}
+				{state === "downloading" && <>Downloading updateâ€¦ {progress}%</>}
+				{state === "launching" && <>Installing â€” Meridian will restart automaticallyâ€¦</>}
 			</span>
 			{isIdle && (
 				<div className="flex items-center gap-1">
@@ -1663,7 +1612,7 @@ function UpdateBanner({
 			)}
 			{!isIdle && (
 				<span className="text-xs font-medium">
-					{state === "downloading" ? "Please wait, do not close the app" : "Restarting shortly…"}
+					{state === "downloading" ? "Please wait, do not close the app" : "Restarting shortlyâ€¦"}
 				</span>
 			)}
 		</div>

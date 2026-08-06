@@ -82,11 +82,6 @@ export default function StreamingTextV2({ text, live }: { text: string; live: bo
 			.replace(/\[WAIT-FOR-RESULTS\][\s\S]*?\[\/WAIT-FOR-RESULTS\]/gi, "")
 			.replace(/\[WAIT-FOR-RESULTS\]|\[\/WAIT-FOR-RESULTS\]/gi, "");
 		if (!live) return cleaned;
-		// Count unclosed code fences. If we have an odd count, append a synthetic
-		// closing fence so markdown still renders the partial block as code
-		// instead of either (a) flickering between prose/code as the stream
-		// progresses or (b) stripping the orphan opener and rendering the
-		// in-progress code as prose for one frame.
 		let count = 0;
 		let idx = cleaned.indexOf("```");
 		while (idx !== -1) {

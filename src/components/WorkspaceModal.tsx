@@ -12,7 +12,7 @@ import { X, FolderOpen } from "lucide-react";
 import { workspaceIcon } from "../lib/workspaceIcons";
 
 const COLORS = ["#5865f2","#3ecf8e","#f04444","#f0a500","#a855f7","#06b6d4","#ec4899","#f97316"];
-const ICONS = ["🏠","💼","💻","📚","⭐","📁","🔬","🎯","🚀","🎨","🌍","⚡","🧠","🔥","💡","🎵"];
+const ICONS = ["ðŸ ","ðŸ’¼","ðŸ’»","ðŸ“š","â­","ðŸ“","ðŸ”¬","ðŸŽ¯","ðŸš€","ðŸŽ¨","ðŸŒ","âš¡","ðŸ§ ","ðŸ”¥","ðŸ’¡","ðŸŽµ"];
 
 interface WorkspaceModalProps {
 	workspace?: Workspace;
@@ -27,7 +27,7 @@ export default function WorkspaceModal({ workspace, onSave, onClose, onDelete }:
 	const [tab, setTab] = useState<WsTab>("general");
 	const [name, setName] = useState(workspace?.name ?? "");
 	const [color, setColor] = useState<string>(workspace?.color ?? COLORS[0]!);
-	const [icon, setIcon] = useState(workspace?.icon ?? "🏠");
+	const [icon, setIcon] = useState(workspace?.icon ?? "ðŸ ");
 	const [workingDirectory, setWorkingDirectory] = useState(workspace?.workingDirectory ?? "");
 	const [systemPrompt, setSystemPrompt] = useState(workspace?.systemPrompt ?? "");
 	const [instructions, setInstructions] = useState(workspace?.instructions ?? "");
@@ -190,7 +190,7 @@ export default function WorkspaceModal({ workspace, onSave, onClose, onDelete }:
 												className="shrink-0 gap-1.5"
 											>
 												<FolderOpen className="h-4 w-4" />
-												{browsingDirectory ? "Opening…" : "Browse"}
+												{browsingDirectory ? "Openingâ€¦" : "Browse"}
 											</Button>
 										</div>
 										<p className="text-xs text-muted-foreground">

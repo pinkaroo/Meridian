@@ -1,20 +1,3 @@
-// Per-skill settings: schema discovery + encrypted storage.
-//
-// Schema: each skill MAY ship a `settings.json` next to its SKILL.md. Shape:
-//   {
-//     "fields": [
-//       { "key": "vercelToken", "label": "Vercel Token",
-//         "type": "string" | "password" | "number" | "boolean" | "select",
-//         "secret": true, "default": "", "description": "...",
-//         "options": ["a", "b"]   // only for type=select
-//       }
-//     ]
-//   }
-//
-// Storage: localStorage key `meridian.skillSettings.v1` holds
-//   { [skillName]: { [fieldKey]: storedValue } }
-// where `storedValue` is either a plain value (booleans, numbers, non-secret
-// strings) or an encryption envelope string ("v1:...") for secret fields.
 
 import { invoke } from "@tauri-apps/api/core";
 import { decrypt, encrypt, isUnlocked } from "./skillCrypto";
@@ -55,16 +38,10 @@ function writeStore(store: RawStore): void {
 	try {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 	} catch {
-		/* ignore quota errors */
 	}
 }
 
-/**
- * Load the settings.json schema for a skill, given the path to its SKILL.md.
- * Returns null if the file does not exist or is malformed.
- */
 export async function loadSkillSchema(skillMdPath: string): Promise<SkillSettingsSchema | null> {
-	// Replace the trailing SKILL.md (any case, any slash style) with settings.json.
 	const settingsPath = skillMdPath.replace(/[\\/]SKILL\.md$/i, (m) => m.replace(/SKILL\.md$/i, "settings.json"));
 	if (settingsPath === skillMdPath) {
 		console.warn(`[skillSettings] could not derive settings path from: ${skillMdPath}`);
@@ -76,8 +53,6 @@ let raw = "";
 	try {
 		raw = await invoke<string>("tool_read_file", { path: settingsPath });
 	} catch (e) {
-		// Missing settings.json is the normal case — most skills don't have one.
-		// Only warn on unexpected errors (permission denied, malformed path, etc.).
 		const msg = String(e ?? "");
 		const isMissing = msg.includes("os error 2") || msg.includes("ENOENT") || msg.includes("cannot find the file");
 		if (!isMissing) {
@@ -116,18 +91,11 @@ let raw = "";
 	}
 }
 
-/**
- * Read raw (still-encrypted for secrets) values for a skill.
- */
 export function getRawSkillSettings(skillName: string): Record<string, unknown> {
 	const store = readStore();
 	return store[skillName] ?? {};
 }
 
-/**
- * Write raw values for a skill. Secret fields should already be encryption
- * envelopes; non-secret values are stored as-is.
- */
 export function setRawSkillSettings(skillName: string, values: Record<string, unknown>): void {
 	const store = readStore();
 	const trimmed: Record<string, unknown> = {};
@@ -143,11 +111,6 @@ export function setRawSkillSettings(skillName: string, values: Record<string, un
 	writeStore(store);
 }
 
-/**
- * Higher-level read: returns decrypted values keyed by field key. Secret
- * fields that can't be decrypted (vault locked, bad key) are returned as
- * null so the caller can show a "locked" state.
- */
 export async function getDecryptedSkillSettings(
 	skillName: string,
 	schema: SkillSettingsSchema,
@@ -189,10 +152,6 @@ export async function getDecryptedSkillSettings(
 	return out;
 }
 
-/**
- * Higher-level write: encrypts secret fields before persisting. Throws if
- * the vault is locked and any secret field has a non-empty value.
- */
 export async function saveSkillSettings(
 	skillName: string,
 	schema: SkillSettingsSchema,
@@ -223,20 +182,13 @@ export async function saveSkillSettings(
 	setRawSkillSettings(skillName, raw);
 }
 
-/**
- * Wipe all stored skill settings. Used when the vault is reset.
- */
 export function wipeAllSkillSettings(): void {
 	try {
 		localStorage.removeItem(STORAGE_KEY);
 	} catch {
-		/* ignore */
 	}
 }
 
-/**
- * Returns the list of skill names that have any stored settings.
- */
 export function listConfiguredSkills(): string[] {
 	return Object.keys(readStore());
 }

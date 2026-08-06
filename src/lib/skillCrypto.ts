@@ -1,12 +1,3 @@
-// Web Crypto-based encryption for skill settings.
-//
-// - Algorithm: AES-GCM 256-bit (authenticated symmetric encryption).
-// - Key derivation: PBKDF2-SHA256, 250k iterations from a user passphrase.
-// - Each ciphertext gets its own random 12-byte IV.
-// - The passphrase is NEVER stored. Only a verification token (an encrypted
-//   known plaintext) is persisted so we can confirm the passphrase on unlock.
-// - The derived key is kept in memory (module-scoped) only for the current
-//   session; closing/reloading the app forces re-unlock.
 
 const PBKDF2_ITERATIONS = 250_000;
 const SALT_KEY = "meridian.skillCrypto.salt.v1";
@@ -59,25 +50,14 @@ async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKe
 	);
 }
 
-/**
- * Has the user ever set a master passphrase?
- * (verifier blob exists in localStorage)
- */
 export function isCryptoInitialized(): boolean {
 	return localStorage.getItem(VERIFIER_KEY) !== null;
 }
 
-/**
- * Is the vault currently unlocked in this session?
- */
 export function isUnlocked(): boolean {
 	return activeKey !== null;
 }
 
-/**
- * Set the master passphrase for the first time. Stores a verifier blob so
- * future unlocks can validate the passphrase. Returns true on success.
- */
 export async function initPassphrase(passphrase: string): Promise<boolean> {
 	if (isCryptoInitialized()) return false;
 	if (!passphrase || passphrase.length < 4) return false;
@@ -90,10 +70,6 @@ export async function initPassphrase(passphrase: string): Promise<boolean> {
 	return true;
 }
 
-/**
- * Unlock with an existing passphrase. Returns true on success, false on
- * wrong passphrase.
- */
 export async function unlock(passphrase: string): Promise<boolean> {
 	if (!isCryptoInitialized()) return false;
 	try {
@@ -109,26 +85,15 @@ export async function unlock(passphrase: string): Promise<boolean> {
 	}
 }
 
-/**
- * Forget the in-memory key. Subsequent reads will fail until unlock().
- */
 export function lock(): void {
 	activeKey = null;
 }
 
-/**
- * Encrypt a plaintext string using the active session key.
- * Returns a base64 envelope: "v1:" + base64(iv || ciphertext).
- * Throws if the vault is locked.
- */
 export async function encrypt(plaintext: string): Promise<string> {
 	if (!activeKey) throw new Error("Skill vault is locked");
 	return encryptWithKey(activeKey, plaintext);
 }
 
-/**
- * Decrypt an envelope produced by encrypt(). Throws on tamper / wrong key.
- */
 export async function decrypt(envelope: string): Promise<string> {
 	if (!activeKey) throw new Error("Skill vault is locked");
 	return decryptWithKey(activeKey, envelope);
@@ -163,17 +128,10 @@ async function decryptWithKey(key: CryptoKey, envelope: string): Promise<string>
 	return new TextDecoder().decode(ptBuf);
 }
 
-/**
- * Reset the entire vault: removes salt, verifier, and all encrypted skill
- * settings. Use when the user has forgotten their passphrase.
- * Returns the number of skill setting entries removed.
- */
 export function resetVault(): number {
 	localStorage.removeItem(SALT_KEY);
 	localStorage.removeItem(VERIFIER_KEY);
 	activeKey = null;
 
-	// Caller is responsible for also clearing skill settings storage.
-	// Returned count kept for future use.
 	return 0;
 }

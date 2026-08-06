@@ -113,8 +113,6 @@ export default function ChatInputBox({ onSend, onStop, isWorking, isWaitingAppro
 		el.style.height = Math.min(el.scrollHeight, 360) + "px";
 	}, [localDraft]);
 
-	// Accept files dropped anywhere in the conversation window, not only on the
-	// composer, while still allowing normal browser navigation outside the app.
 	useEffect(() => {
 		const onDragOver = (event: DragEvent) => {
 			if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
@@ -148,8 +146,6 @@ export default function ChatInputBox({ onSend, onStop, isWorking, isWaitingAppro
 		const list = Array.from(files);
 		if (list.length === 0) return;
 		setFileError(null);
-		// Images are handled via canvas-downscaled base64 below; they get a pass
-		// on the 10 MB text-file limit because we re-encode them anyway.
 		const oversized = list.filter(f => !isImageFile(f) && !isBinaryFile(f) && f.size > MAX_TEXT_BYTES);
 		if (oversized.length > 0) {
 			setFileError(`File too large for inline text: ${oversized.map(f => f.name).join(", ")} (max 10 MB per text file)`);
@@ -290,7 +286,7 @@ export default function ChatInputBox({ onSend, onStop, isWorking, isWaitingAppro
 							</span>
 						)}
 		<button type="button" className="hidden">
-							<span className="text-base">◌</span>
+							<span className="text-base">â—Œ</span>
 						
 						</button>
 						<Popover open={approvalOpen} onOpenChange={setApprovalOpen}>
@@ -352,9 +348,6 @@ export default function ChatInputBox({ onSend, onStop, isWorking, isWaitingAppro
 }
 
 async function readAttachment(file: File): Promise<Attachment> {
-	// Images take a dedicated path: we generate a square thumbnail for the UI
-	// and a downscaled base64 data URL for the model. The original file's bytes
-	// are not preserved; the re-encoded version is what gets shipped.
 	if (isImageFile(file)) {
 		const processed = await processImageFile(file);
 		return {
@@ -372,9 +365,6 @@ async function readAttachment(file: File): Promise<Attachment> {
 		reader.onerror = () => reject(new Error("Failed to read " + file.name));
 		reader.onload = () => {
 			const raw = String(reader.result ?? "");
-			// For non-image binary files we still drop the inline payload --
-			// the original 200_000-char slice corrupted base64 of arbitrary
-			// binaries. The agent gets the header but not a half-truncated body.
 			const content = isBinary ? "" : raw;
 			resolve({ name: file.name, size: file.size, mimeType: file.type || guessBrowserMime(file.name), isBinary, content });
 		};

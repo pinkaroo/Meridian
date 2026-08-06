@@ -15,11 +15,6 @@ interface CacheEntry {
 let cache: CacheEntry | null = null;
 const CACHE_TTL_MS = 60_000;
 
-/**
- * Resolve the ordered list of skill root directories for a given workdir.
- * Workdir-local wins over the global fallback; later roots only contribute
- * skills whose name has not already been registered.
- */
 export function resolveSkillRoots(workdir: string | undefined, globalRoot?: string): string[] {
 	const roots: string[] = [];
 	const wd = (workdir || "").trim();
@@ -87,11 +82,6 @@ export function invalidateSkillsCache(): void {
 	cache = null;
 }
 
-/**
- * Render the AVAILABLE SKILLS section for injection into the system prompt.
- * Descriptions are truncated for progressive disclosure — the agent reads the
- * full SKILL.md when activating one.
- */
 export function renderSkillsSection(
 	skills: SkillEntry[],
 	opts?: { maxDescChars?: number; configuredKeys?: Record<string, string[]> },
@@ -101,15 +91,16 @@ export function renderSkillsSection(
 	const configured = opts?.configuredKeys ?? {};
 	const lines = skills.map(s => {
 		const desc = s.description.length > maxDesc
-			? s.description.slice(0, maxDesc).trimEnd() + "…": s.description;
+			? s.description.slice(0, maxDesc).trimEnd() + "â€¦"
+: s.description;
 		const keys = configured[s.name];
 		const cfgNote = keys && keys.length ? ` [user-configured: ${keys.join(", ")}]` : "";
 		return `- **${s.name}** (${s.relPath}): ${desc}${cfgNote}`;
 	});
 	return `AVAILABLE SKILLS
-You have ${skills.length} installed skill(s). Each skill is a structured workflow with full instructions in its SKILL.md file. The list below shows only the name and a short description — the discovery layer.
+You have ${skills.length} installed skill(s). Each skill is a structured workflow with full instructions in its SKILL.md file. The list below shows only the name and a short description â€” the discovery layer.
 
-When a task matches a skill's description (even loosely), ACTIVATE the skill by reading its SKILL.md with read-file, then follow the instructions inside. Skills may reference bundled scripts, templates, or reference docs in the same directory — load those on demand. Do not paraphrase or guess a skill's contents from the description; the description is a pointer, not the instructions.
+When a task matches a skill's description (even loosely), ACTIVATE the skill by reading its SKILL.md with read-file, then follow the instructions inside. Skills may reference bundled scripts, templates, or reference docs in the same directory â€” load those on demand. Do not paraphrase or guess a skill's contents from the description; the description is a pointer, not the instructions.
 
 ${lines.join("\n")}`;
 }
@@ -128,7 +119,6 @@ function parseSkillDirs(listing: string): string[] {
 }
 
 function stripLineNumbers(text: string): string {
-	// tool_read_file_range returns lines prefixed with "N: " — strip them.
 	return text
 		.split(/\r?\n/)
 		.map(line => line.replace(/^\s*\d+:\s?/, ""))

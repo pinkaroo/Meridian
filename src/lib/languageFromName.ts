@@ -1,7 +1,3 @@
-// Map a filename to a Prism/markdown code-fence language tag. Used by the
-// attachment preview modal so CodeBlock can syntax-highlight the content.
-// Returns "" when the extension is unknown -- MarkdownRenderer's CodeBlock
-// renders that as plain "code" with no highlighting.
 export function languageFromName(name: string): string {
 	const ext = name.split(".").pop()?.toLowerCase() ?? "";
 	switch (ext) {
@@ -46,7 +42,6 @@ export function languageFromName(name: string): string {
 		case "csv": case "tsv": return "";
 		case "log": case "txt": return "";
 		default: {
-			// Special filenames with no extension
 			const base = name.toLowerCase();
 			if (base === "dockerfile" || base.endsWith(".dockerfile")) return "dockerfile";
 			if (base === "makefile") return "makefile";

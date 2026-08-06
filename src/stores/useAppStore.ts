@@ -4,19 +4,7 @@ import LZString from "lz-string";
 import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, rename } from "@tauri-apps/plugin-fs";
 import { BaseDirectory } from "@tauri-apps/api/path";
 
-// ── Per-file serialized write queue ──────────────────────────────────────────
-// Without this, streaming token updates fire dozens of concurrent writeTextFile
-// calls to the SAME path. The OS interleaves them and the file ends up with
-// truncated/corrupted JSON, which then fails to parse on next load and the
-// conversation appears to "vanish".
-//
-// We coalesce: while a write is in flight for path P, additional requests for
-// P just update the pending payload. When the current write finishes, exactly
-// ONE follow-up write runs with the latest data. This guarantees:
-//   1. No two writes to the same path are ever concurrent.
-//   2. The final state always lands on disk.
 const writeQueue = new Map<string, { running: Promise<void>; pending: string | null }>();
-// Track consecutive write failures so we can surface them via the notification channel.
 let consecutiveWriteFailures = 0;
 let writeFailureNotified = false;
 let onPersistFailure: (() => void) | null = null;
@@ -24,8 +12,6 @@ let onPersistFailure: (() => void) | null = null;
 function queueWrite(path: string, content: string): Promise<void> {
   const existing = writeQueue.get(path);
   if (existing) {
-    // A write is already running (or queued). Just update the pending payload —
-    // the in-flight chain will pick it up.
     existing.pending = content;
     return existing.running;
   }
@@ -50,7 +36,6 @@ function queueWrite(path: string, content: string): Promise<void> {
           onPersistFailure?.();
         }
       }
-      // Pick up anything that arrived while we were writing
       current = entry.pending;
       entry.pending = null;
     }
@@ -70,7 +55,7 @@ const DEFAULT_WS: Workspace = {
   id: "default",
   name: "Personal",
   color: "#5865f2",
-  icon: "🏠",
+  icon: "ðŸ ",
   workingDirectory: "",
   systemPrompt: "",
   instructions: "",
@@ -129,7 +114,6 @@ function loadCompressed<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
-    // Try decompression first (post-migration format)
     const decompressed = LZString.decompressFromUTF16(raw);
     if (decompressed) {
       try {
@@ -137,9 +121,6 @@ function loadCompressed<T>(key: string, fallback: T): T {
         if (parsed !== null && parsed !== undefined) return parsed;
       } catch { /* fall through to legacy path */ }
     }
-    // Legacy fallback: value was stored as plain JSON before compression was
-    // added. Only attempt JSON.parse on raw if it actually looks like JSON —
-    // otherwise we waste time parsing compressed UTF-16 noise that will throw.
     const head = raw.charCodeAt(0);
     if (head === 0x7b || head === 0x5b) { // { or [
       try {
@@ -151,12 +132,10 @@ function loadCompressed<T>(key: string, fallback: T): T {
   } catch { return fallback; }
 }
 
-// Abort controllers are managed in App.tsx, not the store
 
 export function useAppStore() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
     const saved = load<Workspace[]>("workspaces", [DEFAULT_WS]);
-    // Migrate old workspaces
     return saved.map(w => ({ ...DEFAULT_WS, ...w }));
   });
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -167,13 +146,12 @@ export function useAppStore() {
       try {
         const hasDir = await exists("conversations", { baseDir: BaseDirectory.AppData });
         if (!hasDir) {
-          // Migrate old conversations from localStorage
           const legacy = loadCompressed<Conversation[]>("conversations", []);
           if (legacy && legacy.length > 0) {
             try {
               await mkdir("conversations", { baseDir: BaseDirectory.AppData, recursive: true });
             } catch (e) {
-              console.error("[conv-store] mkdir(conversations) failed during migration — conversations cannot be persisted to disk:", e);
+              console.error("[conv-store] mkdir(conversations) failed during migration â€” conversations cannot be persisted to disk:", e);
             }
             let successCount = 0;
             await Promise.all(legacy.map(async c => {
@@ -187,7 +165,6 @@ export function useAppStore() {
             if (successCount === legacy.length) {
               try { localStorage.removeItem("conversations"); } catch {}
             }
-            // Seed the lastSaved ref so the first save effect doesn't redundantly rewrite everything
             const seed = new Map<string, Conversation>();
             for (const c of legacy) seed.set(c.id, c);
             lastSavedRef.current = seed;
@@ -220,14 +197,10 @@ export function useAppStore() {
               } catch {}
               continue;
             }
-            // Normalize: ensure required arrays exist so the rest of the app never crashes on undefined.
             if (!Array.isArray(parsed.messages)) parsed.messages = [];
             const titleText = String(parsed.title ?? "New conversation").replace(/\s+/g, " ").trim();
             const repeatedTitle = titleText.match(/^(.{2,40})\1$/i);
             if (repeatedTitle) parsed.title = repeatedTitle[1].trim();
-            // A process exit can leave the last assistant message marked as
-            // streaming. Restore it as an explicit interruption instead of
-            // showing an endless shimmer after relaunch.
             parsed.messages = parsed.messages.map((message) => message.streaming
               ? { ...message, streaming: false, segments: undefined, content: message.content?.trim() ? `${message.content}\n\n*Interrupted*` : "*Interrupted*" }
               : message);
@@ -235,8 +208,7 @@ export function useAppStore() {
             if (parsed.activity && !Array.isArray(parsed.activity)) parsed.activity = [];
             loaded.push(parsed);
           } catch (e) {
-            // Quarantine the bad file instead of losing it silently — user can recover manually
-            console.error("[conv-store] failed to parse", entry.name, "— quarantining as .corrupt:", e);
+            console.error("[conv-store] failed to parse", entry.name, "â€” quarantining as .corrupt:", e);
             try {
               await rename(`conversations/${entry.name}`, `conversations/${entry.name}.corrupt`, {
                 oldPathBaseDir: BaseDirectory.AppData,
@@ -253,15 +225,10 @@ export function useAppStore() {
           }
         }
         loaded.sort((a, b) => b.updatedAt - a.updatedAt);
-        // Seed lastSavedRef so the very first save effect is a no-op (avoids rewriting every conv on mount)
         const seed = new Map<string, Conversation>();
         for (const c of loaded) seed.set(c.id, c);
         lastSavedRef.current = seed;
         setConversations(loaded);
-        // Clear orphaned activeConversationId — if the persisted id no longer
-        // matches any loaded conversation (deleted, archived, or quarantined),
-        // wipe it so the UI doesn't show an empty welcome screen with a stuck
-        // pointer in localStorage.
         const persistedActiveId = load<string | null>("activeConvId", null);
         if (persistedActiveId) {
           const stillExists = loaded.some(c => c.id === persistedActiveId && !c.deleted && !c.archived);
@@ -269,7 +236,6 @@ export function useAppStore() {
         }
       } catch (err) {
         console.error("Failed to load conversations", err);
-        // On error, fallback to legacy so we don't get stuck
         const legacy = loadCompressed<Conversation[]>("conversations", []);
         if (legacy && legacy.length > 0) {
           const seed = new Map<string, Conversation>();
@@ -291,9 +257,6 @@ export function useAppStore() {
       merged.approvals.requireFileWrite = false;
       merged.approvalDefaultsVersion = 2;
     }
-    // Reset MCP server runtime state on startup.
-    // Servers with autoConnect=true will reconnect via McpSettings useEffect.
-    // Servers without autoConnect reset to disconnected (process didn't survive restart).
     if (merged.mcpServers?.length) {
       merged.mcpServers = merged.mcpServers.map(s => ({
         ...s,
@@ -308,24 +271,11 @@ export function useAppStore() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(() => load("activeConvId", null));
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
 
-  // Keep a ref to conversations for synchronous reads (dequeue needs this)
   const conversationsRef = useRef(conversations);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
   useEffect(() => { save("workspaces", workspaces); }, [workspaces]);
   const lastSavedRef = useRef<Map<string, Conversation>>(new Map());
 
-  // ── Persistence: streaming-safe periodic flush ─────────────────────────────
-  // Previous design: a setTimeout debounce keyed on `conversations`. Bug — every
-  // streaming token mutates `conversations`, which cancels the pending timer
-  // and starts a new one. During a long agent run the trailing save NEVER fires
-  // until the run goes idle for 250ms. If the user closes the window, switches
-  // workspace, or reloads mid-run, the entire conversation is lost (this is
-  // exactly what produced the empty conversations/ directory on disk).
-  //
-  // New design: read the latest `conversations` from a ref inside a periodic
-  // flush that runs every 750ms regardless of how often updates arrive. Plus
-  // a final flush on unmount and on beforeunload so nothing is left in memory
-  // when the app closes.
   const latestConversationsRef = useRef(conversations);
   useEffect(() => { latestConversationsRef.current = conversations; }, [conversations]);
 
@@ -343,7 +293,7 @@ export function useAppStore() {
           try {
             await mkdir("conversations", { baseDir: BaseDirectory.AppData, recursive: true });
           } catch (e) {
-            console.error("[conv-store] mkdir(conversations) failed — saves will not land:", e);
+            console.error("[conv-store] mkdir(conversations) failed â€” saves will not land:", e);
             return;
           }
         }
@@ -354,12 +304,6 @@ export function useAppStore() {
           currentSaved.set(conv.id, conv);
           const lastConv = lastSavedRef.current.get(conv.id);
           if (lastConv !== conv) {
-            // Persist the full conversation. Previously this sliced messages to the
-            // last 100, silently truncating long sessions on every flush — reloading
-            // would then permanently lose everything older. We also persist the
-            // queue (so an unsent batch survives a crash) and cap activity to the
-            // last 200 entries (full history is ephemeral but recent context is
-            // useful after restart).
             const trimmedActivity = (conv.activity ?? []).slice(-200);
             const toPersist = {
               ...conv,
@@ -391,15 +335,12 @@ export function useAppStore() {
     const onBeforeUnload = () => { void flush(); };
     window.addEventListener("beforeunload", onBeforeUnload);
 
-    // Kick once immediately so brand-new conversations land without waiting
-    // the full interval.
     void flush();
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
       window.removeEventListener("beforeunload", onBeforeUnload);
-      // Final synchronous-ish flush on unmount — best effort.
       void flush();
     };
   }, [conversationsLoaded]);
@@ -446,15 +387,12 @@ export function useAppStore() {
     return entry;
   }, []);
 
-  // Surface persistent disk-write failures (full disk, missing AppData, etc.)
-  // as a one-time notification so the user knows their conversations aren't
-  // being saved. Wired in via the module-level onPersistFailure callback.
   useEffect(() => {
     onPersistFailure = () => {
       pushNotification({
         type: "task_failed",
         title: "Saving to disk failed",
-        body: "Meridian couldn't write conversation files. Check disk space and AppData permissions — recent changes may not survive a restart.",
+        body: "Meridian couldn't write conversation files. Check disk space and AppData permissions â€” recent changes may not survive a restart.",
       });
     };
     return () => { onPersistFailure = null; };
@@ -495,7 +433,6 @@ const createConversation = useCallback((model?: string, mode: "agent" | "chat" =
   }, []);
 
   const permanentDeleteConversation = useCallback((id: string) => {
-    // Clear file-restore backups for every message in this conversation.
     const conv = conversationsRef.current.find(c => c.id === id);
     if (conv) {
       import("../lib/agentRunner").then(mod => {
@@ -559,8 +496,6 @@ const createConversation = useCallback((model?: string, mode: "agent" | "chat" =
   }, []);
 
   const deleteMessage = useCallback((convId: string, msgId: string) => {
-    // Drop any file-restore backups tied to this message so the in-memory
-    // BACKUP_STORE doesn't leak entries that can never be restored.
     import("../lib/agentRunner").then(mod => mod.clearBackupsForMessage(msgId)).catch(() => {});
     setConversations(prev => prev.map(c =>
       c.id === convId
@@ -580,12 +515,7 @@ const createConversation = useCallback((model?: string, mode: "agent" | "chat" =
     ));
   }, []);
 
-  // Queue management
 const enqueueMessage = useCallback((convId: string, content: string, attachments?: Attachment[], _mode?: "normal" | "merge" | "websearch"): QueuedMessage => {
-    // Queued messages always replay as normal turns. The original mode (merge/websearch)
-    // is intentionally dropped: those modes are one-shot operations tied to the live
-    // toggle state, and silently re-running a merge/web call from the queue surprises
-    // users. Param kept (prefixed _) for call-site compatibility.
     const msg: QueuedMessage = { id: uuidv4(), content, attachments, createdAt: Date.now(), mode: "normal" };
     setConversations(prev => prev.map(c =>
       c.id === convId ? { ...c, queue: [...(c.queue ?? []), msg] } : c
@@ -594,11 +524,6 @@ const enqueueMessage = useCallback((convId: string, content: string, attachments
   }, []);
 
   const dequeueMessage = useCallback((convId: string): QueuedMessage | null => {
-    // Read the head from the live ref synchronously so the caller gets a real
-    // value (React's setConversations updater is async and would otherwise
-    // leave the return value null, which is the bug that made queued messages
-    // disappear without being sent). Then update state to drop that head,
-    // guarding against double-pop in the same tick by checking the id matches.
     const conv = conversationsRef.current.find(c => c.id === convId);
     const head = conv?.queue?.[0];
     if (!head) return null;
@@ -640,10 +565,7 @@ const enqueueMessage = useCallback((convId: string, content: string, attachments
     setConversations(prev => prev.map(c => c.id === convId ? { ...c, queue: [] } : c));
   }, []);
 
-  // Agent control — abort controllers are owned by App.tsx
-  // Store only manages status and queue
 
-  // Workspace
   const createWorkspace = useCallback((data: Omit<Workspace, "id" | "createdAt">) => {
     const ws: Workspace = { ...DEFAULT_WS, ...data, id: uuidv4(), createdAt: Date.now() };
     setWorkspaces(prev => [...prev, ws]);
@@ -672,7 +594,6 @@ const enqueueMessage = useCallback((convId: string, content: string, attachments
     });
   }, []);
 
-  // Settings
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
     setSettings(prev => ({ ...prev, ...updates }));
   }, []);
@@ -689,7 +610,6 @@ const enqueueMessage = useCallback((convId: string, content: string, attachments
     setConversations(prev => prev.map(c => c.id === id ? { ...c, favorited: !c.favorited } : c));
   }, []);
 
-  // Memory
   const addMemory = useCallback((content: string, type: MemoryType = "user", workspaceId?: string, source: "manual" | "agent" = "manual"): MemoryEntry => {
     const entry: MemoryEntry = { id: uuidv4(), content, createdAt: Date.now(), type, workspaceId, enabled: true, source };
     setSettings(prev => ({ ...prev, memories: [...(prev.memories ?? []), entry] }));
@@ -714,7 +634,6 @@ const enqueueMessage = useCallback((convId: string, content: string, attachments
     }));
   }, []);
 
-  // Export / Import
   const exportConversation = useCallback((id: string): string => {
     const conv = conversations.find(c => c.id === id);
     if (!conv) return "";

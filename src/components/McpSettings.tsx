@@ -153,16 +153,12 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 				try { await connectServer(srv, true); } catch { /* per-server error already stored */ }
 			}
 		})();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	async function connectServer(server: McpServer, silent = false) {
 		if (!silent) setConnectingId(server.id);
 		setError(null);
 		const patchStatus = (patch: Partial<McpServer>) => {
-			// Don't write back after the dialog has unmounted — otherwise a slow
-			// connect resolving after close would leave a "connecting" badge
-			// stuck in settings forever.
 			if (!mounted.current) return;
 			updateServers(current => current.map(s => s.id === server.id ? { ...s, ...patch } : s));
 		};
@@ -330,7 +326,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 		<>
 				{(!embedded || view !== "list") && <DialogHeader className="border-b border-border px-6 py-4">
 					<DialogTitle>MCP Servers</DialogTitle>
-					<DialogDescription>Model Context Protocol — connect external tools and data sources</DialogDescription>
+					<DialogDescription>Model Context Protocol â€” connect external tools and data sources</DialogDescription>
 				</DialogHeader>}
 
 				<ScrollArea className={embedded && view === "list" ? "h-auto max-h-none overflow-visible" : "max-h-[calc(85vh-80px)]"}>
@@ -364,14 +360,14 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 														<div className="truncate text-sm font-semibold">{srv.name}</div>
 														<div className="truncate text-xs text-muted-foreground">
 															{srv.transport === "stdio" ? (srv.command ?? "") : (srv.url ?? "")}
-															{srv.tools ? ` · ${srv.tools.length} tools` : ""}
-															{srv.autoConnect ? " · auto-connect" : ""}
+															{srv.tools ? ` Â· ${srv.tools.length} tools` : ""}
+															{srv.autoConnect ? " Â· auto-connect" : ""}
 														</div>
 													</div>
 													<div className="flex items-center gap-1">
 														{(srv.status === "disconnected" || srv.status === "error") && srv.enabled && (
 															<Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => connectServer(srv)} disabled={connectingId === srv.id}>
-																{connectingId === srv.id ? "Connecting…" : "Connect"}
+																{connectingId === srv.id ? "Connectingâ€¦" : "Connect"}
 															</Button>
 														)}
 														{srv.status === "connected" && (
@@ -534,7 +530,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 												</div>
 												{robloxConfigured !== true && (
 													<Button size="sm" variant="outline" onClick={handleWriteRobloxConfig} disabled={robloxWriting} className="h-7 px-2 text-xs">
-														{robloxWriting ? "Writing…" : "Auto-configure"}
+														{robloxWriting ? "Writingâ€¦" : "Auto-configure"}
 													</Button>
 												)}
 											</div>
@@ -587,7 +583,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 										<>
 											<div className="flex flex-col gap-1">
 												<Label htmlFor="srv-cmd">Command</Label>
-												<Input id="srv-cmd" placeholder="cmd.exe, node, python…" value={customCommand} onChange={(e) => setCustomCommand(e.target.value)} />
+												<Input id="srv-cmd" placeholder="cmd.exe, node, pythonâ€¦" value={customCommand} onChange={(e) => setCustomCommand(e.target.value)} />
 											</div>
 											<div className="flex flex-col gap-1">
 												<Label htmlFor="srv-args">Arguments (space-separated)</Label>

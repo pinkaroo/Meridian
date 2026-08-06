@@ -64,7 +64,6 @@ const [renameVal, setRenameVal] = useState("");
 	const [collapsed, setCollapsed] = useState(false);
 	const wsDragIdx = useRef<number | null>(null);
 
-	// Bulk-edit state
 	const [bulkMode, setBulkMode] = useState(false);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [showBulkRename, setShowBulkRename] = useState(false);
@@ -119,8 +118,6 @@ const [renameVal, setRenameVal] = useState("");
 	}
 
 	function applyBulkRename() {
-		// Pattern supports {n} for index (1-based) and {title} for original title.
-		// Empty pattern is a no-op.
 		const pat = bulkRenamePattern.trim();
 		if (!pat) { setShowBulkRename(false); return; }
 		const ids = Array.from(selectedIds);
@@ -714,8 +711,6 @@ function ConvItem({ conv, active, renamingId, renameVal, isRunning, bulkMode, se
 	const [menuOpen, setMenuOpen] = useState(false);
 	useEffect(() => {
 		if (renamingId === conv.id) {
-			// Radix closes the menu after the rename action. Defer selection until
-			// that focus handoff is complete so the whole title stays selected.
 			const frame = requestAnimationFrame(() => {
 				inputRef.current?.focus();
 				inputRef.current?.select();

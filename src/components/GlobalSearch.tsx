@@ -40,7 +40,6 @@ export default function GlobalSearch({ conversations, onJump, onClose }: Props) 
 		const live = conversations.filter(c => !c.deleted);
 
 		for (const conv of live) {
-			// Title match â synthesize a header hit
 			const titleIdx = conv.title.toLowerCase().indexOf(q);
 			if (titleIdx >= 0) {
 				out.push({
@@ -157,8 +156,8 @@ export default function GlobalSearch({ conversations, onJump, onClose }: Props) 
 						<div className="px-4 py-8 text-center text-xs text-muted-foreground">
 							Search titles and message contents across every conversation.
 							<div className="mt-2 flex justify-center gap-3 text-[0.65rem]">
-								<span><kbd className="rounded border border-border px-1.5 py-0.5 font-mono">ââ</kbd> navigate</span>
-								<span><kbd className="rounded border border-border px-1.5 py-0.5 font-mono">âµ</kbd> jump</span>
+								<span><kbd className="rounded border border-border px-1.5 py-0.5 font-mono">Ã¢Â†Â‘Ã¢Â†Â“</kbd> navigate</span>
+								<span><kbd className="rounded border border-border px-1.5 py-0.5 font-mono">Ã¢Â†Âµ</kbd> jump</span>
 								<span><kbd className="rounded border border-border px-1.5 py-0.5 font-mono">Esc</kbd> close</span>
 							</div>
 						</div>
@@ -178,7 +177,7 @@ export default function GlobalSearch({ conversations, onJump, onClose }: Props) 
 							<div className="flex items-center gap-1.5 text-[0.65rem] uppercase tracking-wide text-muted-foreground">
 								<MessageSquare className="h-3 w-3" />
 								<span className="truncate font-semibold">{hit.convTitle}</span>
-								<span>Â·</span>
+								<span>Ã‚Â·</span>
 								<span>{hit.role}</span>
 							</div>
 							<div className="line-clamp-2 text-xs leading-snug">

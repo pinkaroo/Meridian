@@ -118,7 +118,7 @@ function getDisplayName(name: string): string {
 			.split("-")
 			.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
 			.join(" ");
-		return `${serverLabel} · ${toolName}`;
+		return `${serverLabel} Â· ${toolName}`;
 	}
 	const labels: Record<string, string> = {
 		"run-command": "Ran",
@@ -139,7 +139,6 @@ function getIcon(name: string): IconType {
 	return TOOL_ICONS[name] ?? Wrench;
 }
 
-// Extract before/after pair for write-class tools. Returns null if not applicable.
 function extractDiff(call: ToolCallRecord): { before: string; after: string; mode: "edit" | "write" | "append" } | null {
 	const a = call.args;
 	switch (call.name) {
@@ -160,7 +159,6 @@ function extractDiff(call: ToolCallRecord): { before: string; after: string; mod
 	}
 }
 
-// ─── Single tool card ────────────────────────────────────────────────────────
 
 function ToolCardImpl({ call }: { call: ToolCallRecord }) {
 	const [open, setOpen] = useState(call.status === "error");
@@ -289,10 +287,8 @@ export const ToolCard = memo(ToolCardImpl, (prev, next) => {
 	);
 });
 
-// ─── Stacked tool card (×N for consecutive same-name calls) ──────────────────
 
 function aggregateStatus(calls: ToolCallRecord[]): ToolCallRecord["status"] {
-	// Priority: error > running > pending > denied > complete
 	if (calls.some(c => c.status === "error")) return "error";
 	if (calls.some(c => c.status === "running")) return "running";
 	if (calls.some(c => c.status === "pending")) return "pending";
@@ -312,7 +308,6 @@ function ToolCardStackImpl({ calls }: { calls: ToolCallRecord[] }) {
 	const Icon = getIcon(active.name);
 	const status = aggregateStatus(calls);
 
-	// Sum durations for finished calls; show "running" if any are still in flight.
 	const totalMs = calls.reduce((acc, c) => {
 		if (c.finishedAt) return acc + (c.finishedAt - c.startedAt);
 		return acc;
@@ -321,7 +316,6 @@ function ToolCardStackImpl({ calls }: { calls: ToolCallRecord[] }) {
 	const completedCount = calls.filter(c => c.status === "complete").length;
 	const errorCount = calls.filter(c => c.status === "error").length;
 
-	// Build a compact preview of targets — first 2 paths/commands joined.
 	const targets = calls.map(summarize).filter(Boolean);
 	const targetPreview = targets.length > 0
 		? targets.slice(0, 2).join(", ") + (targets.length > 2 ? `, +${targets.length - 2}` : "")
@@ -347,7 +341,7 @@ function ToolCardStackImpl({ calls }: { calls: ToolCallRecord[] }) {
 						className="h-5 shrink-0 border-0 bg-transparent px-0 text-[0.65rem] font-medium tabular-nums text-muted-foreground"
 						title={`${calls.length} calls`}
 					>
-						×{calls.length}
+						Ã—{calls.length}
 					</Badge>
 					{targetPreview && (
 						<span

@@ -1,13 +1,3 @@
-// Image attachment helpers.
-//
-// For any image File the user attaches we produce two things:
-//   - thumbDataUrl: a small square (center-cropped) preview shown in the UI
-//   - fullDataUrl: a base64 data URL of a reasonably sized version of the
-//     original, suitable for sending to a vision-capable model
-//
-// The full version is downscaled if either dimension exceeds MAX_DIM. This
-// keeps prompt payloads sane (multi-MB photos -> a few hundred KB of base64)
-// while staying well within what vision models accept.
 
 const THUMB_SIZE = 96;
 const MAX_DIM = 1568;
@@ -36,7 +26,6 @@ export interface ProcessedImage {
 export async function processImageFile(file: File): Promise<ProcessedImage> {
 	const originalDataUrl = await fileToDataUrl(file);
 
-	// SVG: no canvas processing — use the original as both thumb and full.
 	if (/svg/i.test(file.type) || /\.svg$/i.test(file.name)) {
 		return {
 			thumbDataUrl: originalDataUrl,
@@ -103,7 +92,6 @@ function renderDownscaled(img: HTMLImageElement, maxDim: number, mime: string): 
 	ctx.imageSmoothingEnabled = true;
 	ctx.imageSmoothingQuality = "high";
 	ctx.drawImage(img, 0, 0, dw, dh);
-	// PNG preserves transparency; everything else encodes as JPEG for size.
 	const outMime = /png/i.test(mime) ? "image/png" : "image/jpeg";
 	return outMime === "image/png"
 		? canvas.toDataURL("image/png")

@@ -74,12 +74,8 @@ import { useState, useEffect, useRef, type ComponentType } from "react";
 			...MODELS.map((m) => ({
 				id: `model-${m.id}`,
 				type: "model" as const,
-				// If a conversation is active, picking a model switches THAT conversation
-				// to it. Otherwise we open the Models settings page so the user can set
-				// a default. Previously every model item just opened settings, which
-				// misled users into thinking the picker was broken.
 				label: activeConversationId && onSelectModel ? `Use ${m.name}` : m.name,
-				sublabel: `Model · ${m.tag}`,
+				sublabel: `Model Â· ${m.tag}`,
 				action: () => {
 					if (activeConversationId && onSelectModel) onSelectModel(m.id);
 					else onOpenSettings("models");
@@ -137,7 +133,7 @@ import { useState, useEffect, useRef, type ComponentType } from "react";
 							<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 							<Input
 								autoFocus
-								placeholder="Search chats, workspaces, models, settings…"
+								placeholder="Search chats, workspaces, models, settingsâ€¦"
 								value={query}
 								onChange={(e) => setQuery(e.target.value)}
 								onKeyDown={handleKey}
@@ -180,8 +176,8 @@ import { useState, useEffect, useRef, type ComponentType } from "react";
 
 					<div className="flex items-center gap-4 border-t border-border bg-muted/30 px-3 py-2">
 						{[
-							{ k: "↑↓", t: "navigate" },
-							{ k: "↵", t: "select" },
+							{ k: "â†‘â†“", t: "navigate" },
+							{ k: "â†µ", t: "select" },
 							{ k: "Esc", t: "close" },
 						].map((h) => (
 							<div key={h.k} className="flex items-center gap-1.5">

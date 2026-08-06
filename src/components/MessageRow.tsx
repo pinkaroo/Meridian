@@ -36,8 +36,6 @@ onBookmark: () => void;
 	}
 
 	function formatElapsed(ms: number): string {
-		// Sub-second runs: show the real value (e.g. "0.1s") instead of clamping
-		// to "0.5s", which made fast tool calls look slower than they were.
 		if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`;
 		const s = Math.round(ms / 1000);
 		if (s < 60) return `${s}s`;
@@ -95,8 +93,6 @@ function MessageRowImpl({
 		}
 
 		const time = new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-		// Memoized — message.content can be tens of KB for long assistant replies,
-		// and the parent re-renders frequently during streaming of other messages.
 		const wordCount = useMemo(() => {
 			if (isUser || message.streaming) return 0;
 			return message.content.trim().split(/\s+/).filter(Boolean).length;
@@ -161,7 +157,7 @@ function MessageRowImpl({
 							)}
 							<div className="mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
 								<span className="mr-1 text-[0.7rem] text-muted-foreground">
-									{time}{message.edited && " · edited"}
+									{time}{message.edited && " Â· edited"}
 								</span>
 								<Tooltip>
 									<TooltipTrigger asChild>
@@ -476,8 +472,6 @@ function PresentedFile({ name, content, mimeType: _mimeType, size }: { name: str
 	}
 
 	function MessageSegments({ segments, streaming, onRestoreCheckpoint }: { segments: MessageSegment[]; streaming: boolean; onRestoreCheckpoint?: (checkpointId: string) => void }) {
-		// Group consecutive tool segments into one collapsible harness. Non-tool
-		// segments (text, thinking, checkpoint) break the run.
 		type StackBuf = { calls: ToolCallRecord[]; key: string };
 		type RenderItem =
 			| { kind: "stack"; calls: ToolCallRecord[]; key: string }
@@ -501,10 +495,6 @@ segments.forEach((segment, idx) => {
 				}
 				return;
 			}
-			// Whitespace-only text segments shouldn't break a tool-call run.
-			// The model often emits a stray newline between consecutive tool
-			// calls, which would otherwise split "read-file ×5" into separate
-			// cards. Skip these without flushing and without rendering them.
 			if (segment.kind === "text" && segment.text.trim() === "") {
 				return;
 			}
@@ -517,7 +507,6 @@ segments.forEach((segment, idx) => {
 			<div className="flex flex-col">
 	{items.map((item) => {
 					if (item.kind === "stack") {
-						// Tool activity lives in the Worked for / Working for dropdown.
 						return null;
 					}
 					const { segment, idx } = item;
@@ -584,7 +573,7 @@ segments.forEach((segment, idx) => {
 								</div>
 								{src.snippet && (
 									<div className="block text-xs leading-tight text-muted-foreground/70">
-										{src.snippet.slice(0, 100)}{src.snippet.length > 100 ? "…" : ""}
+										{src.snippet.slice(0, 100)}{src.snippet.length > 100 ? "â€¦" : ""}
 									</div>
 								)}
 							</a>
@@ -613,7 +602,7 @@ segments.forEach((segment, idx) => {
 				<Separator className="flex-1" />
 				<div className="flex items-center gap-1">
 					<History className="h-3 w-3" />
-					<span className="text-xs font-semibold">Step {stepNumber} · {summary}</span>
+					<span className="text-xs font-semibold">Step {stepNumber} Â· {summary}</span>
 				</div>
 				{onRestore && !restored && count > 0 && (
 					confirming ? (

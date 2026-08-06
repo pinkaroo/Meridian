@@ -179,7 +179,6 @@ fn emit_delta(app: &AppHandle, request_id: &str, delta: &str) {
     );
 }
 
-// ─── Streaming chat ──────────────────────────────────────────────────────────
 
 #[tauri::command]
 async fn chat_stream(
@@ -190,8 +189,6 @@ async fn chat_stream(
 ) -> Result<(), String> {
     let requested_model = model.as_deref().unwrap_or(DEFAULT_DEEPSEEK_MODEL);
     let (provider, model_type) = requested_model.split_once(':').unwrap_or_else(|| {
-        // Older conversations stored bare model IDs. Infer their provider
-        // instead of silently routing every unknown ID to DeepSeek.
         let inferred = if requested_model.starts_with("gemini") || requested_model.starts_with("gemma") {
             "google"
         } else if requested_model.starts_with("claude") {
@@ -416,8 +413,6 @@ async fn chat_stream_vision(
     Ok(())
 }
 
-// ─── End of streaming path ───────────────────────────────────────────────────
-// ─── Merge (multi-model consensus) ───────────────────────────────────────────
 
 const MERGE_MODELS: &[&str] = &["deepseek-v4-pro", "deepseek-v4-flash"];
 const JUDGE_MODEL: &str = "deepseek-v4-pro";
@@ -558,9 +553,6 @@ async fn chat_merge(app: AppHandle, message: String) -> Result<String, String> {
     Ok(winner_text)
 }
 
-/// Fake-stream the final merge text to the frontend as small chunks so the UI
-/// shows a typewriter effect. `chat_merge` is a single invoke (not an SSE stream),
-/// so without this the bubble would just pop in fully-formed at the end.
 async fn emit_merge_text(app: &AppHandle, text: &str) {
 	use tokio::time::{sleep, Duration};
 	let chars: Vec<char> = text.chars().collect();
@@ -577,7 +569,6 @@ async fn emit_merge_text(app: &AppHandle, text: &str) {
 	}
 }
 
-// ─── Web search ───────────────────────────────────────────────────────────────
 
 #[derive(serde::Serialize, Clone)]
 pub struct SearchResult {
@@ -716,90 +707,6 @@ async fn chat_surf(app: AppHandle, query: String) -> Result<SearchResponse, Stri
     Ok(SearchResponse { answer: final_answer, sources: grounded.sources })
 }
 
-#[allow(dead_code)]
-async fn _chat_surf_legacy(query: String) -> Result<SearchResponse, String> {
-    let client = reqwest::Client::new();
-    let api_key = std::env::var("SURF_API_KEY")
-        .map_err(|_| "SURF_API_KEY is not configured. Web search is unavailable.".to_string())?;
-
-    let payload = serde_json::json!({
-        "query": query,
-        "model": "gateway-gemini-3-flash",
-        "effort": "medium"
-    });
-
-    let res = client
-        .post("https://unlimited.surf/api/search")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| format!("Surf request failed: {}", e))?;
-
-    let status = res.status();
-    let raw = res
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read surf response: {}", e))?;
-
-    if !status.is_success() {
-        return Err(format!(
-            "Surf server error {}: {}",
-            status,
-            &raw[..raw.len().min(300)]
-        ));
-    }
-
-    let mut answer = String::new();
-    let mut sources = Vec::new();
-
-    for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() { continue; }
-
-        let json_str = if let Some(s) = line.strip_prefix("data: ") {
-            s.trim()
-        } else if let Some(s) = line.strip_prefix("data:") {
-            s.trim()
-        } else {
-            line
-        };
-
-        if json_str == "[DONE]" { continue; }
-
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
-            // Delta for the streaming answer
-            if let Some(delta) = val.get("delta").and_then(|v| v.as_str()) {
-                answer.push_str(delta);
-            }
-            // Results/Sources array
-            let results_key = if val.get("results").is_some() { "results" } else { "sources" };
-            if let Some(arr) = val.get(results_key).and_then(|v| v.as_array()) {
-                for r in arr {
-                    if let (Some(title), Some(url)) = (
-                        r.get("title").and_then(|v| v.as_str()),
-                        r.get("url").and_then(|v| v.as_str()),
-                    ) {
-                        sources.push(SearchResult {
-                            title: title.to_string(),
-                            url: url.to_string(),
-                            snippet: r.get("snippet").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    // Deduplicate sources by URL
-    let mut seen = std::collections::HashSet::new();
-    sources.retain(|s| seen.insert(s.url.clone()));
-
-    Ok(SearchResponse { answer, sources })
-}
-
-// ─── File tools ──────────────────────────────────────────────────────────────
 
 fn resolve_path(path: &str, base_dir: Option<&str>) -> Result<PathBuf, String> {
     let input = Path::new(path);
@@ -837,8 +744,6 @@ async fn tool_write_file(
 		if let Some(parent) = resolved.parent() {
 			fs::create_dir_all(parent).map_err(|e| format!("create_dir error: {}", e))?;
 		}
-		// On Windows, normalize lone \n to \r\n so files stay CRLF-consistent
-		// (matches git's autocrlf behavior and avoids LF/CRLF mismatch on later edits).
 		#[cfg(target_os = "windows")]
 		let to_write = {
 			let mut out = String::with_capacity(content.len() + content.len() / 40);
@@ -877,7 +782,6 @@ async fn tool_append_file(
 		if let Some(parent) = resolved.parent() {
 			fs::create_dir_all(parent).map_err(|e| format!("create_dir error: {}", e))?;
 		}
-		// Normalize line endings to CRLF on Windows for consistency.
 		#[cfg(target_os = "windows")]
 		let to_write = {
 			let mut out = String::with_capacity(content.len() + content.len() / 40);
@@ -1184,7 +1088,6 @@ fn tool_edit_file_inner(
     let content = fs::read_to_string(&resolved)
         .map_err(|e| format!("read error for {}: {}", resolved.display(), e))?;
 
-    // Fast path: exact match (caller already used correct line endings).
     if content.contains(&find) {
         let new_content = content.replacen(&find, &replace, 1);
         fs::write(&resolved, &new_content)
@@ -1195,10 +1098,8 @@ fn tool_edit_file_inner(
         ));
     }
 
-    // Detect file's dominant line ending so we can preserve it on write.
     let file_uses_crlf = content.matches("\r\n").count() * 2 > content.matches('\n').count();
 
-    // Normalize both sides to LF for comparison.
     let file_lf = content.replace("\r\n", "\n");
     let find_lf = find.replace("\r\n", "\n");
     let replace_lf = replace.replace("\r\n", "\n");
@@ -1225,7 +1126,6 @@ fn tool_edit_file_inner(
     ))
 }
 
-// ─── Upload helper: read a file from disk and return name+content (text or base64) ─
 
 #[derive(Serialize)]
 struct UploadedFile {
@@ -1370,11 +1270,9 @@ fn select_directory_impl(initial: Option<String>) -> Result<Option<String>, Stri
 
 #[cfg(not(target_os = "windows"))]
 fn select_directory_impl(_initial: Option<String>) -> Result<Option<String>, String> {
-    // On non-Windows, return None (not supported) rather than an error
     Ok(None)
 }
 
-// ─── Shell command ────────────────────────────────────────────────────────────
 
 #[tauri::command]
 async fn tool_run_command(command: String, workdir: Option<String>) -> Result<String, String> {
@@ -1409,32 +1307,21 @@ async fn codex_cli_run(prompt: String, working_dir: String) -> Result<String, St
 	.map_err(|e| format!("Codex CLI join error: {}", e))?
 }
 
-/// Extract the actual PowerShell script body from a `rest` argument string.
-/// Handles three cases:
-///   1. `-Command "<script>"` or `-Command '<script>'` — returns the quoted contents.
-///   2. `-Command <unquoted-rest>` — returns everything after `-Command`.
-///   3. No `-Command` flag at all — treats the whole `rest` as a one-liner script.
-/// Returns an empty string only when the user passed `-File` or `-EncodedCommand`,
-/// in which case the caller should fall back to verbatim arg passing.
 fn extract_powershell_script(rest: &str) -> String {
 	let trimmed = rest.trim();
 	let lower = trimmed.to_ascii_lowercase();
 
-	// Bail out for -File / -EncodedCommand — those need verbatim handling.
 	if lower.contains("-file ") || lower.contains("-encodedcommand ") {
 		return String::new();
 	}
 
-	// Look for -Command (case-insensitive) anywhere in the string.
 	let cmd_pos = lower.find("-command");
 	if let Some(pos) = cmd_pos {
-		// Skip past "-command" and any following whitespace.
 		let after = &trimmed[pos + "-command".len()..];
 		let after = after.trim_start();
 		if after.is_empty() {
 			return String::new();
 		}
-		// If the next char is a quote, extract the quoted block.
 		let first = after.chars().next().unwrap();
 		if first == '"' || first == '\'' {
 			let quote = first;
@@ -1442,26 +1329,17 @@ fn extract_powershell_script(rest: &str) -> String {
 			if let Some(end) = inner.find(quote) {
 				return inner[..end].to_string();
 			}
-			// Unterminated quote — take the rest verbatim.
 			return inner.to_string();
 		}
-		// Unquoted: take everything after -Command as the script.
 		return after.to_string();
 	}
 
-	// No -Command flag — treat the whole rest as a script.
-	// But only if it doesn't look like pure flags (e.g. just "-NoLogo").
 	if trimmed.starts_with('-') {
-		// Could be flags-only or flags followed by a script. Check if there's
-		// any non-flag token. For safety, return empty and let split_shell_args handle it.
 		return String::new();
 	}
 	trimmed.to_string()
 }
 
-/// Parse a Windows-style command line into individual arguments,
-/// respecting double-quoted segments. Used when a user passes their own
-/// PowerShell flags (e.g. `-Command "..."`) so we don't mangle the quoting.
 fn split_shell_args(input: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
@@ -1471,7 +1349,6 @@ fn split_shell_args(input: &str) -> Vec<String> {
     while let Some(c) = chars.next() {
         match c {
             '"' => {
-                // Toggle quote state. `""` inside quotes becomes a literal `"`.
                 if in_quotes && chars.peek() == Some(&'"') {
                     current.push('"');
                     chars.next();
@@ -1510,13 +1387,6 @@ fn tool_run_command_inner(command: String, workdir: Option<String>) -> Result<St
 		command
 	};
 
-    // Smart shell detection on Windows: if the user's command already starts
-    // with `powershell`, `pwsh`, or `cmd`, invoke that shell directly instead
-    // of double-wrapping in `cmd /C ...`. Double-wrapping strips quotes and
-    // breaks commands with embedded strings (e.g. `powershell -Command "Write-Output x"`
-    // becomes mangled because cmd /C eats the outer quotes before powershell sees them).
-    // Also always pass -NoProfile to PowerShell so user profile banners
-    // (fastfetch, oh-my-posh, etc.) don't pollute command output.
     let trimmed = command.trim_start();
     let lower = trimmed.to_ascii_lowercase();
 
@@ -1526,18 +1396,8 @@ fn tool_run_command_inner(command: String, workdir: Option<String>) -> Result<St
         {
             let rest = trimmed.splitn(2, char::is_whitespace).nth(1).unwrap_or("").trim();
             let mut c = Command::new("powershell.exe");
-            // Always inject these so user profiles (fastfetch, oh-my-posh) don't pollute output.
-            // PowerShell tolerates duplicate -NoProfile flags if the user also passes them.
             c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"]);
             if !rest.is_empty() {
-                // If `rest` begins with any powershell.exe-style flag (e.g. -NoProfile, -Command,
-                // -File, -EncodedCommand, -ExecutionPolicy, -NoLogo, etc.), treat the whole
-                // string as pre-parsed CLI args and split it with quote-awareness. Otherwise
-                // wrap the entire string as a -Command script body.
-                // Strategy: extract the actual script the user wants to run, base64-encode it,
-                // and pass via -EncodedCommand. This sidesteps all Windows quoting disasters
-                // (nested single+double quotes, PowerShell's separate parsing pass, Rust's
-                // CommandLineToArgvW rules) that make -Command with embedded quotes unreliable.
                 let script = extract_powershell_script(rest);
                 if !script.is_empty() {
                     use base64::{engine::general_purpose, Engine as _};
@@ -1584,11 +1444,9 @@ fn tool_run_command_inner(command: String, workdir: Option<String>) -> Result<St
         c
     };
 
-    // Pipe stdout/stderr so we can capture them
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    // Hide the console window on Windows so cmd doesn't flash on screen.
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -1602,13 +1460,11 @@ fn tool_run_command_inner(command: String, workdir: Option<String>) -> Result<St
         }
     }
 
-    // Use wait_with_output with a timeout via a thread
     let timeout = Duration::from_secs(30);
     let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
-    // Collect output with timeout using a thread
     let output = {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -1650,17 +1506,12 @@ fn tool_run_command_inner(command: String, workdir: Option<String>) -> Result<St
     Ok(result)
 }
 
-// ─── App version ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-// ─── Auto-update: direct binary swap ─────────────────────────────────────────
-// Downloads the new exe, drops a PowerShell script that swaps the binary after
-// we exit, then exits. PowerShell waits for the process to die, copies the new
-// exe over the old one, and relaunches.
 
 #[derive(Clone, Serialize)]
 struct DownloadProgress {
@@ -1738,14 +1589,11 @@ async fn download_and_run_update(
     let current_exe_str = current_exe.to_string_lossy().to_string();
     let temp_new_str = temp_new.to_string_lossy().to_string();
 
-    // Write a PowerShell swap-and-relaunch script to temp — use unique name to avoid stale scripts
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    // Also update the installed copy (Start Menu shortcut target) if it exists and is different
-    // Registry key written by NSIS installer: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Meridian
     let install_location: Option<String> = {
         #[cfg(target_os = "windows")]
         {
@@ -1753,7 +1601,6 @@ async fn download_and_run_update(
             use std::process::Command as Cmd;
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-            // Try multiple registry locations (NSIS can install per-user or per-machine)
             let reg_keys = [
                 r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Meridian",
                 r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Meridian",
@@ -1784,7 +1631,6 @@ async fn download_and_run_update(
                 }
             }
 
-            // Fallback: try the default per-user NSIS location
             if found.is_none() {
                 if let Ok(local_app) = std::env::var("LOCALAPPDATA") {
                     let candidate = std::path::PathBuf::from(local_app)
@@ -1796,7 +1642,6 @@ async fn download_and_run_update(
                     }
                 }
             }
-            // Fallback: Program Files
             if found.is_none() {
                 if let Ok(pf) = std::env::var("ProgramFiles") {
                     let candidate = std::path::PathBuf::from(pf)
@@ -1816,8 +1661,6 @@ async fn download_and_run_update(
         }
     };
 
-    // Collect every unique exe path that needs to be updated.
-    // Always includes the running exe; also includes the installed copy if it's different.
     let mut targets: Vec<String> = vec![current_exe_str.clone()];
     if let Some(ref installed) = install_location {
         if installed != &current_exe_str {
@@ -1825,8 +1668,6 @@ async fn download_and_run_update(
         }
     }
 
-    // Relaunch the installed exe if we found one (Start Menu shortcut points there),
-    // otherwise fall back to the current exe.
     let relaunch_path = install_location.as_deref().unwrap_or(&current_exe_str);
     let relaunch_dir = std::path::Path::new(relaunch_path)
         .parent()
@@ -1838,9 +1679,6 @@ async fn download_and_run_update(
         .to_string_lossy()
         .to_string();
 
-    // Build a PowerShell snippet that swaps one target path.
-    // Strategy: rename old → .old (Windows allows renaming a running/locked file),
-    // then copy new exe in place.  Much more reliable than direct overwrite.
     fn swap_block(target: &str, new: &str, log: &str) -> String {
         let old_bak = format!("{}.old", target);
         format!(
@@ -1873,7 +1711,6 @@ async fn download_and_run_update(
             target = target,
             new = new,
             old_bak = old_bak,
-            // safe identifier: strip non-alphanum for use in PS variable name
             safe = target.chars().filter(|c| c.is_alphanumeric()).collect::<String>(),
         )
     }
@@ -1883,7 +1720,6 @@ async fn download_and_run_update(
         .map(|t| swap_block(t, &temp_new_str, &log_path))
         .collect();
 
-    // $swapped tracks whether *any* target was updated (use first target's safe id for the check)
     let first_safe: String = current_exe_str
         .chars()
         .filter(|c| c.is_alphanumeric())
@@ -1904,7 +1740,7 @@ async fn download_and_run_update(
            try {{ Start-Process -FilePath '{relaunch}' -WorkingDirectory '{relaunch_dir}' }} \
            catch {{ Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] Relaunch FAILED: $($_.Exception.Message)\" }} \
          }} else {{ \
-           Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] All swaps failed — NOT relaunching\" \
+           Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] All swaps failed â€” NOT relaunching\" \
          }}; \
          try {{ Remove-Item '{new}' -Force -ErrorAction SilentlyContinue }} catch {{}}; \
          Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] === Updater done ===\"; \
@@ -1925,8 +1761,6 @@ async fn download_and_run_update(
 
     let ps_path_str = ps_path.to_string_lossy().to_string();
 
-    // Spawn the updater script elevated (RunAs) so it can write to Program Files,
-    // then exit after a short delay.
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
         #[cfg(target_os = "windows")]
@@ -1934,15 +1768,11 @@ async fn download_and_run_update(
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-            // Build the PowerShell argument string for ShellExecute.
-            // We use ShellExecute with "runas" verb so it gets admin rights to
-            // overwrite files in C:\Program Files\ without silent failure.
             let args = format!(
                 "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{}\"",
                 ps_path_str
             );
 
-            // Try elevated first; if UAC is disabled or already admin this is a no-op elevation.
             let elevated = unsafe {
                 use windows::core::PCWSTR;
                 use windows::Win32::UI::Shell::ShellExecuteW;
@@ -1964,7 +1794,6 @@ async fn download_and_run_update(
             };
 
             if !elevated {
-                // Fallback: run without elevation (works when not installed to Program Files)
                 let _ = std::process::Command::new("powershell")
                     .args([
                         "-NoProfile",
@@ -1980,7 +1809,6 @@ async fn download_and_run_update(
                     .spawn();
             }
         }
-        // Give PS a moment to start before we exit
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         std::process::exit(0);
     });
@@ -1988,13 +1816,6 @@ async fn download_and_run_update(
     Ok(current_exe_str)
 }
 
-// ─── Installer-based update ──────────────────────────────────────────────────
-//
-// Downloads an NSIS setup exe and runs it with /S (silent) + /CLOSEAPPLICATIONS.
-// NSIS handles admin elevation, file replacement in Program Files, and relaunch
-// via the "Run Meridian" finish-page checkbox (or we pass /LAUNCH).
-// We exit the current process BEFORE launching the installer so NSIS can replace
-// the running exe without being blocked.
 
 #[tauri::command]
 async fn download_and_run_installer(
@@ -2061,9 +1882,6 @@ async fn download_and_run_installer(
     let installer_str = temp_installer.to_string_lossy().to_string();
     let installer_str_ret = installer_str.clone();
 
-    // Spawn the installer then exit so NSIS can replace our exe.
-    // /S = silent mode, /CLOSEAPPLICATIONS = tell NSIS to close running instance.
-    // The NSIS script's finish page "Run Meridian" checkbox will relaunch after install.
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         #[cfg(target_os = "windows")]
@@ -2072,11 +1890,8 @@ async fn download_and_run_installer(
             use windows::Win32::UI::Shell::ShellExecuteW;
             use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-            // Use ShellExecute with "runas" so Windows prompts UAC elevation for the installer.
             let verb: Vec<u16> = "runas\0".encode_utf16().collect();
             let file: Vec<u16> = format!("{}\0", installer_str).encode_utf16().collect();
-            // /S = NSIS silent install.  The NSIS script handles closing the running
-            // instance (taskkill) and relaunching after install (.onInstSuccess).
             let params: Vec<u16> = "/S\0".encode_utf16().collect();
 
             let launched = unsafe {
@@ -2092,7 +1907,6 @@ async fn download_and_run_installer(
             };
 
             if !launched {
-                // Fallback: run without elevation (won't work for Program Files but better than nothing)
                 use std::os::windows::process::CommandExt;
                 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
                 let _ = std::process::Command::new(&installer_str)
@@ -2108,12 +1922,6 @@ async fn download_and_run_installer(
     Ok(installer_str_ret)
 }
 
-// ─── MCP stdio process management ────────────────────────────────────────────
-//
-// Each spawned MCP process gets a dedicated reader thread that drains stdout
-// line-by-line and routes complete JSON-RPC responses to the correct caller
-// via a one-shot channel keyed by RPC id.  This avoids any blocking inside a
-// mutex and makes timeout handling straightforward.
 
 use std::sync::mpsc as std_mpsc;
 
@@ -2124,8 +1932,6 @@ struct McpProcess {
     pending: McpPendingMap,
     stderr_tail: Arc<Mutex<String>>,
     initialized: Arc<Mutex<bool>>,
-    // Keep the Child alive so the process isn't killed when the handle drops.
-    // We use an Option so we can take it out on kill.
     child: Arc<Mutex<Option<std::process::Child>>>,
 }
 
@@ -2137,18 +1943,12 @@ struct McpProcessState {
 
 impl Drop for McpProcess {
     fn drop(&mut self) {
-        // Make sure the OS process is actually terminated when we remove this
-        // from the map. Dropping std::process::Child is a no-op on Windows,
-        // so without this, killed servers leak and respawning the same
-        // server can fail because the old instance still owns its handles.
         if let Ok(mut guard) = self.child.lock() {
             if let Some(mut c) = guard.take() {
                 let _ = c.kill();
                 let _ = c.wait();
             }
         }
-        // Drain any in-flight callers so they fail fast instead of waiting
-        // for the 30s timeout.
         if let Ok(mut map) = self.pending.lock() {
             for (_, tx) in map.drain() {
                 let _ = tx.send(serde_json::json!({
@@ -2159,7 +1959,6 @@ impl Drop for McpProcess {
     }
 }
 
-// Global map of running MCP processes
 static MCP_PROCESSES: std::sync::LazyLock<Arc<Mutex<HashMap<String, McpProcess>>>> =
     std::sync::LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
@@ -2220,7 +2019,6 @@ fn spawn_mcp_stderr_reader(
         .map_err(|e| format!("Failed to spawn MCP stderr reader thread: {}", e))
 }
 
-/// Spawn a per-process reader thread that routes JSON-RPC responses to callers.
 fn spawn_mcp_reader(
     server_id: String,
     stdout: std::process::ChildStdout,
@@ -2229,15 +2027,13 @@ fn spawn_mcp_reader(
     std::thread::Builder::new()
         .name(format!("mcp-reader-{}", server_id))
         .spawn(move || {
-            // Catch any panic inside the reader so a malformed message can't
-            // take down the whole Tauri app.
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut reader = BufReader::new(stdout);
                 let mut line = String::new();
                 loop {
                     line.clear();
                     match reader.read_line(&mut line) {
-                        Ok(0) => break, // EOF — process exited
+                        Ok(0) => break, // EOF â€” process exited
                         Ok(_) => {
                             let trimmed = line.trim();
                             if trimmed.is_empty() {
@@ -2253,9 +2049,7 @@ fn spawn_mcp_reader(
                                         let _ = tx.send(val);
                                     }
                                 }
-                                // Notifications (no id) are silently dropped
                             }
-                            // Non-JSON lines (e.g. startup banners) are ignored
                         }
                         Err(_) => break,
                     }
@@ -2264,7 +2058,6 @@ fn spawn_mcp_reader(
             if result.is_err() {
                 eprintln!("MCP reader for '{}' panicked", server_id);
             }
-            // Process died (or reader panicked) — drain any pending callers
             {
                 let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
                 for (_, tx) in map.drain() {
@@ -2311,9 +2104,6 @@ fn mcp_spawn(
         return Err("MCP command is empty".to_string());
     }
 
-    // Kill existing process for this server if any. Take it OUT under the
-    // lock, then drop it after releasing the lock so kill()/wait() can't
-    // stall the global map.
     let old = MCP_PROCESSES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -2426,10 +2216,6 @@ async fn mcp_call(
         .map_err(|e| format!("Failed to encode MCP request: {}", e))?;
     line.push('\n');
 
-    // Grab the per-process handles, then DROP the global map lock before
-    // doing any blocking I/O. Holding MCP_PROCESSES across stdin.write_all
-    // would freeze every other MCP operation (and spawn/kill) whenever a
-    // single server's stdin pipe was full or slow.
     let (stdin_arc, pending, stderr_tail, initialized) = {
         let procs = MCP_PROCESSES.lock().unwrap_or_else(|e| e.into_inner());
         let proc = procs
@@ -2449,8 +2235,6 @@ async fn mcp_call(
         .unwrap_or_else(|e| e.into_inner())
         .insert(id, tx);
 
-    // Write off the async runtime — stdin.write_all is blocking and could
-    // stall if the child's pipe buffer is full.
     let write_result = {
         let stdin_arc = Arc::clone(&stdin_arc);
         let line_bytes = line.into_bytes();
@@ -2474,7 +2258,6 @@ async fn mcp_call(
         ));
     }
 
-    // Block on the response off the async runtime thread to avoid stalling other tasks.
     let recv_result =
         tokio::task::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(30)))
             .await
@@ -2520,9 +2303,6 @@ async fn mcp_call(
 
 #[tauri::command]
 fn mcp_kill(server_id: String) -> Result<(), String> {
-    // Take the entry out under the lock, then drop it OUTSIDE the lock so
-    // the Drop impl (which calls kill() + wait()) doesn't hold the global
-    // mutex while waiting on the child to exit.
     let removed = MCP_PROCESSES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -2575,7 +2355,6 @@ async fn tool_fetch_url(url: String) -> Result<String, String> {
     Ok(format!("HTTP {}\n{}", status, text))
 }
 
-// ─── Roblox Studio MCP config ─────────────────────────────────────────────────
 
 fn roblox_mcp_config_path() -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
@@ -2737,8 +2516,6 @@ fn roblox_mcp_launch_info() -> Result<RobloxMcpLaunch, String> {
     resolve_roblox_mcp_launch(false)
 }
 
-/// Write the Roblox Studio MCP config and launcher.
-/// Uses Roblox's Windows config shape with cmd.exe and mcp.bat.
 #[tauri::command]
 fn write_roblox_mcp_config() -> Result<String, String> {
     let config_path = roblox_mcp_config_path()?;
@@ -2772,7 +2549,6 @@ fn write_roblox_mcp_config() -> Result<String, String> {
     Ok(config_path.to_string_lossy().to_string())
 }
 
-/// Read the Roblox Studio MCP config, returning its contents or empty string if not present.
 #[tauri::command]
 fn read_roblox_mcp_config() -> Result<String, String> {
     let config_path = roblox_mcp_config_path()?;
@@ -2782,11 +2558,8 @@ fn read_roblox_mcp_config() -> Result<String, String> {
     fs::read_to_string(&config_path).map_err(|e| format!("Failed to read Roblox MCP config: {}", e))
 }
 
-// ─── App entry ───────────────────────────────────────────────────────────────
 
-// ─── Extra tools ─────────────────────────────────────────────────────────────
 
-/// Count lines in a file — useful for deciding how to chunk reads
 #[tauri::command]
 async fn tool_count_lines(path: String, base_dir: Option<String>) -> Result<String, String> {
 	tokio::task::spawn_blocking(move || {
@@ -2800,7 +2573,6 @@ async fn tool_count_lines(path: String, base_dir: Option<String>) -> Result<Stri
 	.map_err(|e| format!("count_lines join error: {}", e))?
 }
 
-/// Replace ALL occurrences of a string in a file (unlike edit-file which replaces only the first)
 #[tauri::command]
 async fn tool_replace_all_in_file(
 	path: String,
@@ -2838,7 +2610,6 @@ async fn tool_replace_all_in_file(
 	.map_err(|e| format!("replace_all_in_file join error: {}", e))?
 }
 
-/// Read multiple files at once — returns each file's path and content
 #[tauri::command]
 async fn tool_read_multiple_files(
 	paths: Vec<String>,
@@ -2864,13 +2635,11 @@ async fn tool_read_multiple_files(
 	.map_err(|e| format!("read_multiple_files join error: {}", e))?
 }
 
-/// Get environment variables (non-sensitive ones)
 #[tauri::command]
 fn tool_get_env(key: String) -> Result<String, String> {
     std::env::var(&key).map_err(|_| format!("Environment variable '{}' not set", key))
 }
 
-/// Check if a path exists and return its type
 #[tauri::command]
 fn tool_path_type(path: String, base_dir: Option<String>) -> Result<String, String> {
     let resolved = resolve_path(&path, base_dir.as_deref())?;
@@ -2886,7 +2655,6 @@ fn tool_path_type(path: String, base_dir: Option<String>) -> Result<String, Stri
     Ok("other".to_string())
 }
 
-/// Get the current working directory
 #[tauri::command]
 fn tool_get_cwd() -> Result<String, String> {
     std::env::current_dir()
@@ -2894,7 +2662,6 @@ fn tool_get_cwd() -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-// ─── Skill bundling and import ───────────────────────────────────────────────
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
 	fs::create_dir_all(dst).map_err(|e| format!("create_dir {}: {}", dst.display(), e))?;
@@ -2922,7 +2689,6 @@ fn validate_skill_dir(dir: &Path) -> Result<String, String> {
 	}
 	let content = fs::read_to_string(&skill_md)
 		.map_err(|e| format!("Could not read SKILL.md: {}", e))?;
-	// Parse YAML frontmatter between leading --- markers
 	let trimmed = content.trim_start();
 	if !trimmed.starts_with("---") {
 		return Err("SKILL.md must start with YAML frontmatter (---)".to_string());
@@ -2950,7 +2716,6 @@ fn validate_skill_dir(dir: &Path) -> Result<String, String> {
 	if !has_desc {
 		return Err("SKILL.md frontmatter missing 'description:' field".to_string());
 	}
-	// Validate name is filesystem-safe
 	if name.contains('/') || name.contains('\\') || name.contains("..") {
 		return Err(format!("Invalid skill name: {}", name));
 	}
@@ -2972,7 +2737,6 @@ async fn ensure_default_skills(
 
 	tokio::task::spawn_blocking(move || -> Result<Vec<String>, String> {
 		if !bundled_skills.is_dir() {
-			// No bundled skills (dev mode or trimmed install) — not an error
 			return Ok(Vec::new());
 		}
 		let target = PathBuf::from(&target_root);

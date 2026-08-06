@@ -15,11 +15,11 @@ import { useState, type ComponentType } from "react";
 	}
 
 	const STEPS: Step[] = [
-		{ icon: Sparkles, title: "Welcome to Meridian", desc: "A powerful AI agent that lives on your desktop. Ask questions, write code, manage files, run commands — all in one place.", hint: "Let's take a quick tour. You can skip anytime." },
+		{ icon: Sparkles, title: "Welcome to Meridian", desc: "A powerful AI agent that lives on your desktop. Ask questions, write code, manage files, run commands â€” all in one place.", hint: "Let's take a quick tour. You can skip anytime." },
 		{ icon: Folder, title: "Workspaces", desc: "Organize your work into Workspaces. Each workspace has its own conversations, instructions, and working directory.", hint: "Right-click a workspace to edit it, or click + to create one." },
-		{ icon: Bot, title: "The Agent", desc: "Meridian's agent can read and write files, run shell commands, search the web, and remember things across sessions — all with your approval.", hint: "Set a working directory in Settings → General so the agent knows where your project lives." },
+		{ icon: Bot, title: "The Agent", desc: "Meridian's agent can read and write files, run shell commands, search the web, and remember things across sessions â€” all with your approval.", hint: "Set a working directory in Settings â†’ General so the agent knows where your project lives." },
 		{ icon: Settings, title: "Settings & Personalization", desc: "Add custom instructions, set a nickname, manage memories, and choose a theme that fits your style.", hint: "Open Settings with the gear icon or press Ctrl+K and search 'settings'." },
-		{ icon: Keyboard, title: "Keyboard Shortcuts", desc: "Press Ctrl+K to open the command palette. Ctrl+/ focuses the chat input. Shift+Enter for new lines while typing.", hint: "The agent can queue multiple instructions while it's working — just keep typing." },
+		{ icon: Keyboard, title: "Keyboard Shortcuts", desc: "Press Ctrl+K to open the command palette. Ctrl+/ focuses the chat input. Shift+Enter for new lines while typing.", hint: "The agent can queue multiple instructions while it's working â€” just keep typing." },
 		{ icon: Rocket, title: "You're ready", desc: "That's everything. Start a conversation and see what Meridian can do for you.", hint: undefined },
 	];
 

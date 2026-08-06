@@ -41,13 +41,6 @@ export interface AgentCallbacks {
   onApprovalRequired: (req: ApprovalRequestInput) => Promise<"approved" | "denied">;
 onError: (err: string) => void;
   onDone: () => void;
-  /**
-   * Called between agent steps (after tools run, before the next model turn).
-   * If the host has a queued user message, return it and it will be injected
-   * as the next user turn — the runner keeps going instead of completing.
-   * Return null/undefined to proceed normally (next model turn with no new input)
-   * or to end the run if there are no more tool calls.
-   */
   onConsumeQueued?: () => { content: string; attachments?: Attachment[] } | null | undefined;
   onConvFileAdded?: (file: { name: string; path: string; mimeType: string; size: number; content: string; isBinary: boolean }) => void;
   onConvFileRead?: (name: string) => { content: string; mimeType: string; isBinary: boolean } | null;
@@ -236,7 +229,6 @@ let skills: SkillEntry[] = [];
           if (keys.length) skillConfiguredKeys[s.name] = keys;
         }
       } catch {
-        /* skill settings injection is best-effort */
       }
     } catch (err) {
       cb.onActivity({
@@ -282,14 +274,12 @@ const isChatMode = conv.mode === "chat";
         : "";
       const responseInstruction = "\n\nAfter completing work, give a concise user-facing summary of what changed, files affected, and any checks or next steps. Keep internal tool syntax and raw protocol markers out of that summary.";
 
-// Only route the first turn of the run to vision (images come from user
-      // attachments); subsequent tool-loop turns are text-only follow-ups.
       const turnImages = iter === 1 ? allImages : [];
       if (turnImages.length > 0) {
         cb.onActivity({
           type: "message",
           label: "Switched to gpt-5.6",
-          detail: `Image attachment detected (${turnImages.length} image${turnImages.length === 1 ? "" : "s"}) — routing to vision model.`,
+          detail: `Image attachment detected (${turnImages.length} image${turnImages.length === 1 ? "" : "s"}) â€” routing to vision model.`,
         });
       }
       const { fullText, toolCalls } = await streamOneTurn({
@@ -309,19 +299,11 @@ const isChatMode = conv.mode === "chat";
 
 history.push({ role: "assistant", content: fullText });
 
-// Chat mode allows tools too -- the prompt frames them as opt-in for
-      // skills, file creation, and code execution. The model decides when
-      // to reach for them based on the user's request.
       const effectiveToolCalls = toolCalls;
 
       if (effectiveToolCalls.length === 0) {
-        // Natural end-of-turn: if a queued user message is waiting, inject it
-        // as the next user turn and keep running instead of completing.
         const queued = cb.onConsumeQueued?.();
 if (queued && queued.content) {
-          // Close out the current assistant bubble before opening a new one --
-          // otherwise the streaming caret stays animating on a message that's
-          // done because nothing else holds a reference to its id.
           cb.onMessageUpdate(assistantMsgId, () => ({ streaming: false, content: aggregateText }));
 
           cb.onMessageCreate({
@@ -331,7 +313,6 @@ if (queued && queued.content) {
             timestamp: Date.now(),
             attachments: queued.attachments && queued.attachments.length > 0 ? queued.attachments : undefined,
           });
-          // Start a fresh assistant bubble for the new turn.
           const nextAssistantMsg: Message = {
             id: uid("msg"),
             role: "assistant",
@@ -379,11 +360,11 @@ if (queued && queued.content) {
               const deferredTc = effectiveToolCalls[j];
               updateToolStatus(cb, assistantMsgId, deferredTc.id, {
                 status: "denied",
-                result: "Deferred by wait-for-results — not executed. Re-issue next turn.",
+                result: "Deferred by wait-for-results â€” not executed. Re-issue next turn.",
                 finishedAt: Date.now(),
               });
               toolOutputs.push(
-                `[TOOL: ${deferredTc.name}]\nInput: ${JSON.stringify(deferredTc.args)}\nOutput:\nDEFERRED — this tool was NOT executed because a wait-for-results sentinel appeared before it. Re-issue it in your next response with refined arguments based on the results above.`,
+                `[TOOL: ${deferredTc.name}]\nInput: ${JSON.stringify(deferredTc.args)}\nOutput:\nDEFERRED â€” this tool was NOT executed because a wait-for-results sentinel appeared before it. Re-issue it in your next response with refined arguments based on the results above.`,
               );
             }
           }
@@ -416,7 +397,7 @@ if (queued && queued.content) {
           if (i < effectiveToolCalls.length - 1) {
             stoppedEarly = true;
             const remaining = toolCalls.length - 1 - i;
-            stopReason = `Batch halted after error in ${tc.name}. ${remaining} subsequent tool call(s) skipped — re-issue them after addressing the failure.`;
+            stopReason = `Batch halted after error in ${tc.name}. ${remaining} subsequent tool call(s) skipped â€” re-issue them after addressing the failure.`;
           }
           break;
         }
@@ -435,11 +416,6 @@ if (queued && queued.content) {
 
       const trailer = stoppedEarly && stopReason ? `\n\n[BATCH NOTE]\n${stopReason}` : "";
 
-      // Push the tool_results turn first, untouched. Any queued user message
-      // is then pushed as a SEPARATE user turn so the model treats it as a
-      // fresh instruction rather than an addendum to the tool batch. Without
-      // this split, the next assistant response visually glues onto the prior
-      // task's bubble because it's still answering the same conversational turn.
       history.push({
         role: "user",
         content: `<tool_results>\n${toolOutputs.join("\n\n")}${trailer}\n</tool_results>`,
@@ -447,8 +423,6 @@ if (queued && queued.content) {
 
       const queuedMid = cb.onConsumeQueued?.();
       if (queuedMid && queuedMid.content) {
-        // Close out the current assistant bubble before opening a new one --
-        // otherwise the streaming flag stays set on a message that's done.
         cb.onMessageUpdate(assistantMsgId, () => ({ streaming: false, content: aggregateText }));
 
         cb.onMessageCreate({
@@ -459,7 +433,6 @@ if (queued && queued.content) {
           attachments: queuedMid.attachments && queuedMid.attachments.length > 0 ? queuedMid.attachments : undefined,
         });
 
-        // Fresh assistant bubble for the queued turn's response.
         const nextAssistantMsg: Message = {
           id: uid("msg"),
           role: "assistant",
@@ -521,7 +494,7 @@ async function streamOneTurn(args: StreamTurnArgs): Promise<{ fullText: string; 
       const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
       args.cb.onActivity({
         type: "message",
-        label: `Network error — retrying (attempt ${attempt + 1}/${MAX_RETRIES + 1})`,
+        label: `Network error â€” retrying (attempt ${attempt + 1}/${MAX_RETRIES + 1})`,
         detail: lastErr?.message,
       });
       await new Promise(r => setTimeout(r, delay));
@@ -695,7 +668,6 @@ for (const ev of events) {
 const useVision = images && images.length > 0;
     if (useVision) {
 const visionImages = images!.map(img => {
-        // Strip data URL prefix if present — Rust adds it back when building the OpenAI payload.
         let content = img.content || "";
         const m = content.match(/^data:[^;]+;base64,(.+)$/);
         if (m) content = m[1];
@@ -764,8 +736,6 @@ async function runToolCall(args: RunToolArgs): Promise<ToolOutcome> {
 
   const approvalReason = whyApprovalNeeded(name, params, settings);
 if (approvalReason) {
-    // Command rules can short-circuit the approval prompt for run-command
-    // when the user has pre-decided (e.g. always-allow `npm`, always-deny `rm`).
     if (name === "run-command") {
       const cmdText = (params.body ?? params.command ?? "").trim();
       const ruleDecision = matchCommandRule(cmdText, settings.commandRules ?? []);
@@ -773,7 +743,6 @@ if (approvalReason) {
         return finishTool(cb, assistantMsgId, toolId, "", `Blocked by command rule: ${cmdText}`, "denied");
       }
       if (ruleDecision === "approve") {
-        // Auto-approved — skip the prompt entirely.
       } else {
         cb.onStatusChange("waiting_approval");
         const decision = await cb.onApprovalRequired({
@@ -959,7 +928,7 @@ if (approvalReason) {
         return finishTool(cb, assistantMsgId, toolId, "", msg, "error");
       }
       const delay = Math.min(250 * Math.pow(2, attempt), 2000);
-      cb.onActivity({ type: "message", label: `${name} transient error — retrying`, detail: msg });
+      cb.onActivity({ type: "message", label: `${name} transient error â€” retrying`, detail: msg });
       await new Promise(r => setTimeout(r, delay));
     }
   }
@@ -1288,10 +1257,9 @@ async function getSkillSecretValue(params: Record<string, string>, baseDir: stri
 	if (!fieldKey) return "ERROR: missing 'field' parameter";
 
 	if (!isSkillVaultUnlocked()) {
-		return "ERROR: Skill vault is locked. Ask the user to unlock it in Settings → Skills, then retry.";
+		return "ERROR: Skill vault is locked. Ask the user to unlock it in Settings â†’ Skills, then retry.";
 	}
 
-	// Find the skill on disk to load its schema.
 	const roots = resolveSkillRoots(baseDir, "");
 	let skills: SkillEntry[] = [];
 	try {
@@ -1307,7 +1275,7 @@ async function getSkillSecretValue(params: Record<string, string>, baseDir: stri
 
 	const field = schema.fields.find(f => f.key === fieldKey);
 	if (!field) return `ERROR: field '${fieldKey}' not defined in skill '${skillName}' settings`;
-	if (!field.secret) return `ERROR: field '${fieldKey}' is not a secret field — use the value the user provided directly`;
+	if (!field.secret) return `ERROR: field '${fieldKey}' is not a secret field â€” use the value the user provided directly`;
 
 	let values: Record<string, string | number | boolean | null>;
 	try {
@@ -1318,7 +1286,7 @@ async function getSkillSecretValue(params: Record<string, string>, baseDir: stri
 
 	const v = values[fieldKey];
 	if (v === null || v === undefined || v === "") {
-		return `ERROR: no value stored for '${fieldKey}' in skill '${skillName}'. Ask the user to configure it in Settings → Skills.`;
+		return `ERROR: no value stored for '${fieldKey}' in skill '${skillName}'. Ask the user to configure it in Settings â†’ Skills.`;
 	}
 	return String(v);
 }
@@ -1366,9 +1334,6 @@ function renderUserTurn(text: string, attachments?: Attachment[]): string {
   const ATTACHMENT_INLINE_LIMIT = 200_000;
   const blocks = attachments.map(a => {
     const header = `[Attachment: ${a.name}${a.size ? ` (${a.size} bytes)` : ""}${a.mimeType ? ` ${a.mimeType}` : ""}]`;
-// Images are NOT embedded here — they're attached to the system prompt
-    // instead (see buildSystemPrompt). Just emit a header so the model knows
-    // an image came with this turn.
     const isImage = /^image\//i.test(a.mimeType) || !!a.thumbDataUrl;
     if (isImage) {
       return `${header}\n(See ATTACHED IMAGES section in system prompt.)`;
@@ -1402,7 +1367,6 @@ function matchCommandRule(cmd: string, rules: CommandRule[]): "approve" | "deny"
   if (!cmd || rules.length === 0) return null;
   const trimmed = cmd.trim();
   const base = trimmed.split(/\s+/)[0] ?? "";
-  // Walk rules in order; first match wins. Users order them by priority.
   for (const r of rules) {
     const pat = r.pattern.trim();
     if (!pat) continue;
@@ -1492,10 +1456,6 @@ function formatRaw(name: string, params: Record<string, string>): string {
   return parts.join("\n");
 }
 
-// Pre-write sanitization. Peeks at the existing file (if any) to decide whether
-// to ASCII-fold the new content. If the file already contains non-ASCII, we
-// only repair mojibake — we don't fold, because that would damage legitimate
-// localized content. If the file is new or already ASCII, fold aggressively.
 async function sanitizeWriteContent(raw: string, path: string, baseDir?: string): Promise<string> {
 	if (!raw) return raw;
 	let preserveExisting = false;
@@ -1503,7 +1463,6 @@ async function sanitizeWriteContent(raw: string, path: string, baseDir?: string)
 		const existing = await invoke<string>("tool_read_file", { path, baseDir });
 		if (existing && hasNonAscii(existing)) preserveExisting = true;
 	} catch {
-		// File doesn't exist or unreadable — treat as new, fold aggressively.
 	}
 	const result = sanitizeForWrite(raw, { preserveExisting });
 	return result.content;
