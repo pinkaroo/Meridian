@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { invoke } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isBrowserModel } from "./lib/models";
 
 function makeConversationTitle(text: string, attachmentName?: string) {
 	const source = (text.trim() || attachmentName || "New conversation")
@@ -119,6 +120,8 @@ export default function App() {
 	const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
 	const [editingWorkspace, setEditingWorkspace] = useState<Workspace | undefined>();
 	const [errors, setErrors] = useState<Record<string, string>>({});
+	const [browserSetup, setBrowserSetup] = useState<{ model: string; convId: string; text: string; attachments?: Attachment[] } | null>(null);
+	const [browserSetupError, setBrowserSetupError] = useState(false);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	const [showActivityPanel, setShowActivityPanel] = useState(false);
 	const [showFileViewer, setShowFileViewer] = useState(false);
@@ -794,6 +797,11 @@ store.setActiveConversationId(conv.id);
 			});
 		}
 		const convId = conv.id;
+		if (isBrowserModel(conv.model ?? store.settings.defaultModel) && localStorage.getItem(`meridian-browser:${conv.model}`) !== "ready") {
+			store.setAgentStatus(convId, "paused");
+			setBrowserSetup({ model: conv.model ?? store.settings.defaultModel, convId, text, attachments });
+			return;
+		}
 		const wasEmpty = conv.messages.length === 0;
 
 		if (wasEmpty) {
@@ -1333,6 +1341,20 @@ onMemoryClick={() => openSettings("personalization")}
 						onDelete={(fileId) => store.removeConvFile(activeConv.id, fileId)}
 						onRename={(fileId, newName) => store.renameConvFile(activeConv.id, fileId, newName)}
 					/>
+				)}
+
+				{browserSetup && (
+					<div className="fixed inset-0 z-[200] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="browser-setup-title">
+						<div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-2xl">
+							<h2 id="browser-setup-title" className="text-base font-semibold">Set up browser access</h2>
+							<p className="mt-2 text-sm text-muted-foreground">Sign in to the selected AI provider in Meridian’s isolated browser session. Meridian never sees or stores your password.</p>
+							{browserSetupError && <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">The browser session was closed before setup finished.</p>}
+							<div className="mt-5 flex justify-end gap-2">
+								<Button variant="ghost" onClick={() => { setBrowserSetup(null); setBrowserSetupError(false); store.setAgentStatus(browserSetup.convId, "interrupted"); }}>No thanks</Button>
+								<Button onClick={() => { const provider = browserSetup.model.split(":")[1]; const urls: Record<string, string> = { deepseek: "https://chat.deepseek.com", gemini: "https://gemini.google.com", kimi: "https://kimi.com", glm: "https://chat.z.ai", qwen: "https://chat.qwen.ai", arena: "https://arena.ai", meta: "https://meta.ai" }; window.open(urls[provider] ?? "about:blank", "meridian-browser-login", "noopener"); setBrowserSetupError(false); localStorage.setItem(`meridian-browser:${browserSetup.model}`, "ready"); const pending = browserSetup; setBrowserSetup(null); void executeAgent(pending.convId, pending.text, pending.attachments); }}>I’ve signed in</Button>
+							</div>
+						</div>
+					</div>
 				)}
 
 				<Toaster position="bottom-center" theme="dark" />
