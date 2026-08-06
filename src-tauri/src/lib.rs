@@ -28,19 +28,30 @@ async fn browser_open_login(app: AppHandle, provider: String, url: String) -> Re
             std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
             std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
             std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
+            std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Mozilla Firefox\\firefox.exe",
+            std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Mozilla Firefox\\firefox.exe",
+            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Mozilla Firefox\\firefox.exe",
         ]; 
         if let Some(browser) = candidates.iter().find(|path| Path::new(path).exists()) {
-            Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window").arg(url).spawn().map_err(|e| e.to_string())?;
+            let mut command = Command::new(browser);
+            if browser.to_ascii_lowercase().contains("firefox") {
+                command.arg("-profile").arg(&profile);
+            } else {
+                command.arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window");
+            }
+            command.arg(url).spawn().map_err(|e| e.to_string())?;
         } else {
             let mut launched = false;
-            for browser in ["chrome.exe", "msedge.exe"] {
+            for browser in ["chrome.exe", "msedge.exe", "firefox.exe"] {
                 if Command::new("where").arg(browser).output().map(|output| output.status.success()).unwrap_or(false) {
-                    Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window").arg(&url).spawn().map_err(|e| e.to_string())?;
+                    let mut command = Command::new(browser);
+                    if browser == "firefox.exe" { command.arg("-profile").arg(&profile); } else { command.arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window"); }
+                    command.arg(&url).spawn().map_err(|e| e.to_string())?;
                     launched = true;
                     break;
                 }
             }
-            if !launched { return Err("Chrome or Edge could not be found. Install one to use browser providers.".into()); }
+            if !launched { return Err("Chrome, Edge, or Firefox could not be found. Install one to use browser providers.".into()); }
         }
     }
     #[cfg(not(target_os = "windows"))]
