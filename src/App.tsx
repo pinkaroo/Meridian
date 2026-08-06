@@ -122,6 +122,17 @@ export default function App() {
 	const [errors, setErrors] = useState<Record<string, string>>({});
 	const [browserSetup, setBrowserSetup] = useState<{ model: string; convId: string; text: string; attachments?: Attachment[] } | null>(null);
 	const [browserSetupError, setBrowserSetupError] = useState(false);
+	useEffect(() => {
+		if (!browserSetup) return;
+		const provider = browserSetup.model.split(":")[1];
+		const urls: Record<string, string> = { deepseek: "https://chat.deepseek.com", gemini: "https://gemini.google.com", kimi: "https://kimi.com", glm: "https://chat.z.ai", qwen: "https://chat.qwen.ai", arena: "https://arena.ai", meta: "https://meta.ai" };
+		const url = urls[provider] ?? "about:blank";
+		setBrowserSetupError(false);
+		void invoke("browser_open_login", { provider, url }).catch(() => {
+			const opened = window.open(url, "meridian-browser-login", "noopener");
+			setBrowserSetupError(!opened);
+		});
+	}, [browserSetup]);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	const [showActivityPanel, setShowActivityPanel] = useState(false);
 	const [showFileViewer, setShowFileViewer] = useState(false);
@@ -1344,14 +1355,14 @@ onMemoryClick={() => openSettings("personalization")}
 				)}
 
 				{browserSetup && (
-					<div className="fixed inset-0 z-[200] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="browser-setup-title">
-						<div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-2xl">
+					<div className="fixed inset-0 z-[200] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="browser-setup-title" onClick={() => { setBrowserSetup(null); setBrowserSetupError(false); }}>
+						<div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-2xl" onClick={event => event.stopPropagation()}>
 							<h2 id="browser-setup-title" className="text-base font-semibold">Set up browser access</h2>
-							<p className="mt-2 text-sm text-muted-foreground">Sign in to the selected AI provider in Meridianâ€™s isolated browser session. Meridian never sees or stores your password.</p>
+                            <p className="mt-2 text-sm text-muted-foreground">Sign in to the selected AI provider in Meridian's isolated browser session. Meridian never sees or stores your password.</p>
 							{browserSetupError && <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">The browser session was closed before setup finished.</p>}
 							<div className="mt-5 flex justify-end gap-2">
 								<Button variant="ghost" onClick={() => { setBrowserSetup(null); setBrowserSetupError(false); store.setAgentStatus(browserSetup.convId, "interrupted"); }}>No thanks</Button>
-                                <Button variant="outline" onClick={() => { const provider = browserSetup.model.split(":")[1]; const urls: Record<string, string> = { deepseek: "https://chat.deepseek.com", gemini: "https://gemini.google.com", kimi: "https://kimi.com", glm: "https://chat.z.ai", qwen: "https://chat.qwen.ai", arena: "https://arena.ai", meta: "https://meta.ai" }; const url = urls[provider] ?? "about:blank"; setBrowserSetupError(false); void invoke("browser_open_login", { provider, url }).catch(() => { const opened = window.open(url, "meridian-browser-login", "noopener"); setBrowserSetupError(!opened); }); }}>Set up</Button>
+                                <Button variant="outline" onClick={() => { setBrowserSetupError(false); setBrowserSetup(current => current ? { ...current } : current); }}>Retry</Button>
                                 <Button onClick={() => { localStorage.setItem(`meridian-browser:${browserSetup.model}`, "ready"); const pending = browserSetup; setBrowserSetup(null); setBrowserSetupError(false); void executeAgent(pending.convId, pending.text, pending.attachments); }}>I have signed in</Button>
 							</div>
 						</div>
@@ -1616,9 +1627,9 @@ function UpdateBanner({
 			)}
 			<Download className="h-4 w-4" />
 			<span className="flex-1 text-sm font-medium">
-				{state === "idle" && <>Update available: <strong>v{info.currentVersion}</strong> Ã¢â€ â€™ <strong>v{info.latestVersion}</strong></>}
-				{state === "downloading" && <>Downloading updateÃ¢â‚¬Â¦ {progress}%</>}
-				{state === "launching" && <>Installing Ã¢â‚¬â€ Meridian will restart automaticallyÃ¢â‚¬Â¦</>}
+				{state === "idle" && <>Update available: <strong>v{info.currentVersion}</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ <strong>v{info.latestVersion}</strong></>}
+				{state === "downloading" && <>Downloading updateÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ {progress}%</>}
+				{state === "launching" && <>Installing ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Meridian will restart automaticallyÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦</>}
 			</span>
 			{isIdle && (
 				<div className="flex items-center gap-1">
@@ -1635,7 +1646,7 @@ function UpdateBanner({
 			)}
 			{!isIdle && (
 				<span className="text-xs font-medium">
-					{state === "downloading" ? "Please wait, do not close the app" : "Restarting shortlyÃ¢â‚¬Â¦"}
+					{state === "downloading" ? "Please wait, do not close the app" : "Restarting shortlyÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦"}
 				</span>
 			)}
 		</div>
