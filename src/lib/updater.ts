@@ -1,7 +1,7 @@
 // Auto-update checker — fetches latest release from GitHub
 // Repo: github.com/pinkaroo/Meridian
 
-const VERCEL_UPDATE = "https://meridianagent.vercel.app/update.json";
+const GITHUB_RELEASES = "https://api.github.com/repos/pinkaroo/Meridian/releases/latest";
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -51,7 +51,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     if (typeof window === "undefined" || !(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) return null;
     const [currentVersion, res] = await Promise.all([
       getCurrentVersion(),
-      fetch(VERCEL_UPDATE, {
+      fetch(GITHUB_RELEASES, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(8000),
       }),
@@ -59,20 +59,19 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
 
     if (!res.ok) return null;
 
-    const data = await res.json();
-    const latestVersion: string = String(data.version ?? "").replace(/^v/, "");
+    const data = await res.json() as { tag_name?: string; name?: string; body?: string; published_at?: string; assets?: Array<{ name: string; browser_download_url: string; size?: number }> };
+    const latestVersion: string = String(data.tag_name ?? data.name ?? "").replace(/^v/, "");
 
     if (!latestVersion || !isNewer(latestVersion, currentVersion)) return null;
 
-    const assets = [
-      data.installer && { name: "MeridianSetup.exe", downloadUrl: new URL(data.installer, VERCEL_UPDATE).href, size: 0 },
-      data.executable && { name: "meridian.exe", downloadUrl: new URL(data.executable, VERCEL_UPDATE).href, size: 0 },
-    ].filter(Boolean) as UpdateInfo["assets"];
+    const assets = (data.assets ?? [])
+      .filter(asset => /\.exe$/i.test(asset.name))
+      .map(asset => ({ name: asset.name, downloadUrl: asset.browser_download_url, size: asset.size ?? 0 }));
 
     return {
       currentVersion,
       latestVersion,
-      releaseUrl: VERCEL_UPDATE,
+      releaseUrl: `https://github.com/pinkaroo/Meridian/releases/tag/v${latestVersion}`,
       releaseNotes: (data.body ?? "").slice(0, 500),
       publishedAt: data.published_at ?? "",
       assets,
