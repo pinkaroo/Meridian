@@ -125,7 +125,7 @@ export default function App() {
 	useEffect(() => {
 		if (!browserSetup) return;
 		const provider = browserSetup.model.split(":")[1];
-		const urls: Record<string, string> = { deepseek: "https://chat.deepseek.com", gemini: "https://gemini.google.com", kimi: "https://kimi.com", glm: "https://chat.z.ai", qwen: "https://chat.qwen.ai", arena: "https://arena.ai", meta: "https://meta.ai" };
+		const urls: Record<string, string> = { deepseek: "https://chat.deepseek.com", gemini: "https://gemini.google.com/app", kimi: "https://kimi.com/chat", glm: "https://chat.z.ai", qwen: "https://chat.qwen.ai", arena: "https://arena.ai/text/direct" };
 		const url = urls[provider] ?? "about:blank";
 		setBrowserSetupError(false);
 		void invoke("browser_open_login", { provider, url }).catch(() => {

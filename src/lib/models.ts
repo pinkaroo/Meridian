@@ -15,7 +15,6 @@ const fallback = [
 	{ id: "browser:glm", name: "GLM (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
 	{ id: "browser:qwen", name: "Qwen (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
 	{ id: "browser:arena", name: "Arena (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
-	{ id: "browser:meta", name: "Meta AI (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
 	{ id: "google:gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite", tag: "fast" as const, provider: "google", access: "Free" as const },
 	{ id: "deepseek:deepseek-chat", name: "DeepSeek V3", tag: "standard" as const, provider: "deepseek", access: "Paid" as const },
 	{ id: "deepseek:deepseek-reasoner", name: "DeepSeek R1", tag: "reasoning" as const, provider: "deepseek", access: "Paid" as const },
