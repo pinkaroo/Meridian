@@ -12,54 +12,6 @@ use tauri::{AppHandle, Emitter, Manager};
 const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-chat";
 const PROVIDER_KEY_SERVICE: &str = "com.meridian.providers";
-
-#[tauri::command]
-async fn browser_open_login(app: AppHandle, provider: String, url: String) -> Result<String, String> {
-    let safe = provider.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
-    if safe.is_empty() || !(url.starts_with("https://")) { return Err("Invalid browser provider or URL".into()); }
-    let profile = app.path().app_data_dir().map_err(|e| e.to_string())?.join("browser-profiles").join(safe);
-    fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
-    #[cfg(target_os = "windows")]
-    {
-        let candidates = [
-            std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
-            std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
-            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
-            std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
-            std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
-            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
-            std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Mozilla Firefox\\firefox.exe",
-            std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Mozilla Firefox\\firefox.exe",
-            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Mozilla Firefox\\firefox.exe",
-        ]; 
-        if let Some(browser) = candidates.iter().find(|path| Path::new(path).exists()) {
-            let mut command = Command::new(browser);
-            if browser.to_ascii_lowercase().contains("firefox") {
-                command.arg("-profile").arg(&profile);
-            } else {
-                command.arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window");
-            }
-            command.arg(url).spawn().map_err(|e| e.to_string())?;
-        } else {
-            let mut launched = false;
-            for browser in ["chrome.exe", "msedge.exe", "firefox.exe"] {
-                if Command::new("where").arg(browser).output().map(|output| output.status.success()).unwrap_or(false) {
-                    let mut command = Command::new(browser);
-                    if browser == "firefox.exe" { command.arg("-profile").arg(&profile); } else { command.arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window"); }
-                    command.arg(&url).spawn().map_err(|e| e.to_string())?;
-                    launched = true;
-                    break;
-                }
-            }
-            if !launched { return Err("Chrome, Edge, or Firefox could not be found. Install one to use browser providers.".into()); }
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    { Command::new("google-chrome").arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg(url).spawn().map_err(|e| e.to_string())?; }
-    Ok(profile.to_string_lossy().into_owned())
-}
-
-fn provider_env_name(provider: &str) -> Result<&'static str, String> {
     match provider {
         "openai" => Ok("OPENAI_API_KEY"),
         "anthropic" => Ok("ANTHROPIC_API_KEY"),
@@ -1786,7 +1738,7 @@ async fn download_and_run_update(
            try {{ Start-Process -FilePath '{relaunch}' -WorkingDirectory '{relaunch_dir}' }} \
            catch {{ Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] Relaunch FAILED: $($_.Exception.Message)\" }} \
          }} else {{ \
-           Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] All swaps failed â€” NOT relaunching\" \
+           Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] All swaps failed Ã¢â‚¬â€ NOT relaunching\" \
          }}; \
          try {{ Remove-Item '{new}' -Force -ErrorAction SilentlyContinue }} catch {{}}; \
          Add-Content -Path $log -Value \"[$([DateTime]::Now.ToString('HH:mm:ss'))] === Updater done ===\"; \
@@ -2079,7 +2031,7 @@ fn spawn_mcp_reader(
                 loop {
                     line.clear();
                     match reader.read_line(&mut line) {
-                        Ok(0) => break, // EOF â€” process exited
+                        Ok(0) => break, // EOF Ã¢â‚¬â€ process exited
                         Ok(_) => {
                             let trimmed = line.trim();
                             if trimmed.is_empty() {
@@ -2846,7 +2798,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            browser_open_login,
 chat_stream,
             save_provider_key,
             provider_connections,

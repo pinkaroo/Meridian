@@ -9,12 +9,6 @@ const listeners = new Set<ModelsListener>();
 const metadata = new Map<string, ModelMeta>();
 
 const fallback = [
-	{ id: "browser:deepseek", name: "DeepSeek (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
-	{ id: "browser:gemini", name: "Gemini (Browser)", tag: "fast" as const, provider: "browser", access: "Free" as const },
-	{ id: "browser:kimi", name: "Kimi (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
-	{ id: "browser:glm", name: "GLM (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
-	{ id: "browser:qwen", name: "Qwen (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
-	{ id: "browser:arena", name: "Arena (Browser)", tag: "standard" as const, provider: "browser", access: "Free" as const },
 	{ id: "google:gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite", tag: "fast" as const, provider: "google", access: "Free" as const },
 	{ id: "deepseek:deepseek-chat", name: "DeepSeek V3", tag: "standard" as const, provider: "deepseek", access: "Paid" as const },
 	{ id: "deepseek:deepseek-reasoner", name: "DeepSeek R1", tag: "reasoning" as const, provider: "deepseek", access: "Paid" as const },
@@ -27,8 +21,6 @@ export let MODELS: ModelOption[] = fallback.map(({ provider, access, ...model })
 	return model;
 });
 
-export const isBrowserModel = (id: string) => id.startsWith("browser:");
-const browserModels = fallback.filter(model => model.provider === "browser").map(({ provider: _provider, access: _access, ...model }) => model);
 
 export function subscribeToModels(listener: ModelsListener): () => void {
 	listeners.add(listener);
@@ -52,10 +44,10 @@ export async function fetchDynamicModels() {
 		const catalog = await invoke<Array<{ id: string; name: string; provider: string; access: ModelAccess; tag: ModelOption["tag"]; contextWindow?: number; inputCostUsdPerMillion?: number; outputCostUsdPerMillion?: number }>>("provider_models");
 		if (!catalog.length) return;
 		metadata.clear();
-		MODELS = [...browserModels, ...catalog.map((model) => {
+		MODELS = catalog.map((model) => {
 			metadata.set(model.id, { provider: model.provider, access: model.access, contextWindow: model.contextWindow, inputCostUsdPerMillion: model.inputCostUsdPerMillion, outputCostUsdPerMillion: model.outputCostUsdPerMillion });
 			return { id: model.id, name: model.name, tag: model.tag || tagFromSlug(model.id) };
-		})];
+		});
 		notify();
 	} catch {
 		metadata.clear();

@@ -29,7 +29,6 @@ import { cn } from "@/lib/utils";
 import { invoke } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isBrowserModel } from "./lib/models";
 
 function makeConversationTitle(text: string, attachmentName?: string) {
 	const source = (text.trim() || attachmentName || "New conversation")
@@ -120,19 +119,6 @@ export default function App() {
 	const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
 	const [editingWorkspace, setEditingWorkspace] = useState<Workspace | undefined>();
 	const [errors, setErrors] = useState<Record<string, string>>({});
-	const [browserSetup, setBrowserSetup] = useState<{ model: string; convId: string; text: string; attachments?: Attachment[] } | null>(null);
-	const [browserSetupError, setBrowserSetupError] = useState(false);
-	useEffect(() => {
-		if (!browserSetup) return;
-		const provider = browserSetup.model.split(":")[1];
-		const urls: Record<string, string> = { deepseek: "https://chat.deepseek.com/sign_in", gemini: "https://gemini.google.com/app", kimi: "https://www.kimi.com/login", glm: "https://chat.z.ai/auth", qwen: "https://chat.qwen.ai/auth", arena: "https://arena.ai/text/direct" };
-		const url = urls[provider] ?? "about:blank";
-		setBrowserSetupError(false);
-		void invoke("browser_open_login", { provider, url }).catch(() => {
-			const opened = window.open(url, "meridian-browser-login", "noopener");
-			setBrowserSetupError(!opened);
-		});
-	}, [browserSetup]);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	const [showActivityPanel, setShowActivityPanel] = useState(false);
 	const [showFileViewer, setShowFileViewer] = useState(false);
@@ -808,11 +794,6 @@ store.setActiveConversationId(conv.id);
 			});
 		}
 		const convId = conv.id;
-		if (isBrowserModel(conv.model ?? store.settings.defaultModel) && localStorage.getItem(`meridian-browser:${conv.model}`) !== "ready") {
-			store.setAgentStatus(convId, "paused");
-			setBrowserSetup({ model: conv.model ?? store.settings.defaultModel, convId, text, attachments });
-			return;
-		}
 		const wasEmpty = conv.messages.length === 0;
 
 		if (wasEmpty) {
@@ -1352,21 +1333,6 @@ onMemoryClick={() => openSettings("personalization")}
 						onDelete={(fileId) => store.removeConvFile(activeConv.id, fileId)}
 						onRename={(fileId, newName) => store.renameConvFile(activeConv.id, fileId, newName)}
 					/>
-				)}
-
-				{browserSetup && (
-					<div className="fixed inset-0 z-[200] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="browser-setup-title" onClick={() => { setBrowserSetup(null); setBrowserSetupError(false); }}>
-						<div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-2xl" onClick={event => event.stopPropagation()}>
-							<h2 id="browser-setup-title" className="text-base font-semibold">Set up browser access</h2>
-                            <p className="mt-2 text-sm text-muted-foreground">Sign in to the selected AI provider in Meridian's isolated browser session. Meridian never sees or stores your password.</p>
-							{browserSetupError && <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">Meridian could not start its dedicated browser profile. Install Chrome or Edge, then choose Retry.</p>}
-							<div className="mt-5 flex justify-end gap-2">
-								<Button variant="ghost" onClick={() => { setBrowserSetup(null); setBrowserSetupError(false); store.setAgentStatus(browserSetup.convId, "interrupted"); }}>No thanks</Button>
-                                <Button variant="outline" onClick={() => { setBrowserSetupError(false); setBrowserSetup(current => current ? { ...current } : current); }}>Retry</Button>
-                                <Button onClick={() => { localStorage.setItem(`meridian-browser:${browserSetup.model}`, "ready"); const pending = browserSetup; setBrowserSetup(null); setBrowserSetupError(false); void executeAgent(pending.convId, pending.text, pending.attachments); }}>I have signed in</Button>
-							</div>
-						</div>
-					</div>
 				)}
 
 				<Toaster position="bottom-center" theme="dark" />

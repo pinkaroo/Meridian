@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "meridian"
 version = "1.0.0"
 description = "A Tauri App"

@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { MODELS, TAG_COLORS, fetchDynamicModels, getModel, getModelMeta, subscribeToModels, isBrowserModel } from "../lib/models";
+import { MODELS, TAG_COLORS, fetchDynamicModels, getModel, getModelMeta, subscribeToModels } from "../lib/models";
 import type { ModelOption, ModelTag } from "../types";
 
 const TAG_LABELS: Record<ModelTag, string> = { flagship: "FLAGSHIP", standard: "STANDARD", fast: "FAST", reasoning: "REASONING" };
