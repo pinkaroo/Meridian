@@ -3,7 +3,8 @@ use keyring::Entry;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -12,6 +13,26 @@ use tauri::{AppHandle, Emitter, Manager};
 const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-chat";
 const PROVIDER_KEY_SERVICE: &str = "com.meridian.providers";
+
+fn start_rocode_bridge(app: AppHandle) {
+    std::thread::spawn(move || {
+        let listener = match TcpListener::bind(("127.0.0.1", 38541)) { Ok(value) => value, Err(_) => return };
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut buffer = [0u8; 65536];
+            let size = stream.read(&mut buffer).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..size]);
+            let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+            if request.starts_with("POST /v1/browser-event") {
+                if let Ok(event) = serde_json::from_str::<serde_json::Value>(body) {
+                    let _ = app.emit("rocode://browser-event", event);
+                }
+            }
+            let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+}
 
 fn provider_env_name(provider: &str) -> Result<&'static str, String> {
     match provider {
@@ -2794,6 +2815,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            start_rocode_bridge(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 window.set_decorations(false)?;
             }
