@@ -1,0 +1,25 @@
+{
+	"fields": [
+		{
+			"key": "vercelToken",
+			"label": "Vercel Token",
+			"type": "password",
+			"secret": true,
+			"description": "Personal access token from https://vercel.com/account/tokens. Used for non-interactive deployments."
+		},
+		{
+			"key": "teamSlug",
+			"label": "Team Slug",
+			"type": "string",
+			"description": "Optional. Vercel team or org slug to deploy under. Leave empty to use your personal account.",
+			"placeholder": "e.g. my-team"
+		},
+		{
+			"key": "defaultProd",
+			"label": "Deploy to production by default",
+			"type": "boolean",
+			"description": "When true, deployments target production unless overridden. When false, preview deployments are the default.",
+			"default": false
+		}
+	]
+}

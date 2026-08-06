@@ -1,0 +1,18 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meridian</title>
+  </head>
+  <body>
+    <div id="root"><div class="boot-loader" aria-label="Loading Meridian"><div class="boot-spinner"></div><span>Loading Meridian</span></div></div>
+    <style>
+      .boot-loader{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#111;color:#c9cdd3;font:500 14px system-ui,sans-serif}
+      .boot-spinner{width:32px;height:32px;border:2px solid #34383f;border-top-color:#e3e7ed;border-radius:50%;animation:boot-spin .8s linear infinite}
+      @keyframes boot-spin{to{transform:rotate(360deg)}}
+    </style>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
