@@ -30,9 +30,17 @@ async fn browser_open_login(app: AppHandle, provider: String, url: String) -> Re
             std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
         ]; 
         if let Some(browser) = candidates.iter().find(|path| Path::new(path).exists()) {
-            Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg(url).spawn().map_err(|e| e.to_string())?;
+            Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window").arg(url).spawn().map_err(|e| e.to_string())?;
         } else {
-            Command::new("cmd").args(["/C", "start", "", &url]).spawn().map_err(|e| format!("Chrome or Edge was not found: {}", e))?;
+            let mut launched = false;
+            for browser in ["chrome.exe", "msedge.exe"] {
+                if Command::new("where").arg(browser).output().map(|output| output.status.success()).unwrap_or(false) {
+                    Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg("--new-window").arg(&url).spawn().map_err(|e| e.to_string())?;
+                    launched = true;
+                    break;
+                }
+            }
+            if !launched { return Err("Chrome or Edge could not be found. Install one to use browser providers.".into()); }
         }
     }
     #[cfg(not(target_os = "windows"))]
