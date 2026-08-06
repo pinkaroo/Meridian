@@ -12,6 +12,8 @@ use tauri::{AppHandle, Emitter, Manager};
 const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-chat";
 const PROVIDER_KEY_SERVICE: &str = "com.meridian.providers";
+
+fn provider_env_name(provider: &str) -> Result<&'static str, String> {
     match provider {
         "openai" => Ok("OPENAI_API_KEY"),
         "anthropic" => Ok("ANTHROPIC_API_KEY"),
