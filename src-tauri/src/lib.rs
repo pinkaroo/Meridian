@@ -23,11 +23,17 @@ async fn browser_open_login(app: AppHandle, provider: String, url: String) -> Re
     {
         let candidates = [
             std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
+            std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
             std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Google\\Chrome\\Application\\chrome.exe",
             std::env::var("PROGRAMFILES").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
-        ];
-        let browser = candidates.iter().find(|path| Path::new(path).exists()).ok_or("Chrome or Edge was not found")?;
-        Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg(url).spawn().map_err(|e| e.to_string())?;
+            std::env::var("PROGRAMFILES(X86)").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
+            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Microsoft\\Edge\\Application\\msedge.exe",
+        ]; 
+        if let Some(browser) = candidates.iter().find(|path| Path::new(path).exists()) {
+            Command::new(browser).arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg(url).spawn().map_err(|e| e.to_string())?;
+        } else {
+            Command::new("cmd").args(["/C", "start", "", &url]).spawn().map_err(|e| format!("Chrome or Edge was not found: {}", e))?;
+        }
     }
     #[cfg(not(target_os = "windows"))]
     { Command::new("google-chrome").arg(format!("--user-data-dir={}", profile.to_string_lossy())).arg("--no-first-run").arg(url).spawn().map_err(|e| e.to_string())?; }

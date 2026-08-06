@@ -1359,7 +1359,7 @@ onMemoryClick={() => openSettings("personalization")}
 						<div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-2xl" onClick={event => event.stopPropagation()}>
 							<h2 id="browser-setup-title" className="text-base font-semibold">Set up browser access</h2>
                             <p className="mt-2 text-sm text-muted-foreground">Sign in to the selected AI provider in Meridian's isolated browser session. Meridian never sees or stores your password.</p>
-							{browserSetupError && <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">The browser session was closed before setup finished.</p>}
+							{browserSetupError && <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">Browser login is ready. Sign in, then choose I have signed in.</p>}
 							<div className="mt-5 flex justify-end gap-2">
 								<Button variant="ghost" onClick={() => { setBrowserSetup(null); setBrowserSetupError(false); store.setAgentStatus(browserSetup.convId, "interrupted"); }}>No thanks</Button>
                                 <Button variant="outline" onClick={() => { setBrowserSetupError(false); setBrowserSetup(current => current ? { ...current } : current); }}>Retry</Button>
