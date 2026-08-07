@@ -153,7 +153,7 @@ export default function App() {
 
 						const tools = await Promise.race([
 							mcpConnect(connectionServer),
-							new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), isRoblox ? 20000 : 10000)),
+							new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), isRoblox ? 5000 : 10000)),
 						]);
 
 						// Verify the user didn't toggle it off or disconnect it manually during the connection attempt
