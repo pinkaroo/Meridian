@@ -91,7 +91,7 @@ export function renderSkillsSection(
 	const configured = opts?.configuredKeys ?? {};
 	const lines = skills.map(s => {
 		const desc = s.description.length > maxDesc
-			? s.description.slice(0, maxDesc).trimEnd() + "â€¦"
+			? s.description.slice(0, maxDesc).trimEnd() + "..."
 : s.description;
 		const keys = configured[s.name];
 		const cfgNote = keys && keys.length ? ` [user-configured: ${keys.join(", ")}]` : "";

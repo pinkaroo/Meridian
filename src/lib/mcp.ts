@@ -13,10 +13,21 @@ interface McpProcessState {
 }
 
 const ROBLOX_NO_TOOLS_MESSAGE =
-  "Meridian started the Roblox MCP bridge, but Roblox Studio has not attached to it yet. Leave Meridian open, then in Roblox Studio open Assistant, click the three-dot menu, choose Manage MCP Servers, and turn Enable Studio as MCP server off and on. Then click Connect again.";
+  "Roblox Studio returned no tools. Open a place in Edit mode, enable Assistant > Manage MCP Servers > Enable Studio as MCP server, and retry. If it still returns no tools, enable Game Settings > Security > Allow HTTP Requests, then restart Studio.";
+
+// Roblox sometimes reports an empty tools/list briefly even though the stdio
+// session is initialized and Studio shows the client as connected. Keep the
+// documented tool names available so the agent can still issue calls while
+// Studio finishes refreshing its catalog.
+const ROBLOX_TOOL_NAMES = [
+  "script_read", "multi_edit", "script_search", "script_grep", "execute_luau",
+  "search_game_tree", "inspect_instance", "get_studio_state", "start_stop_play",
+  "get_console_output", "screen_capture", "list_roblox_studios", "set_active_studio",
+];
+let robloxToolsCache: { at: number; tools: McpTool[] } | null = null;
 
 function isRobloxServer(server: McpServer): boolean {
-  return server.id.startsWith("roblox-studio");
+  return server.id.toLowerCase().startsWith("roblox");
 }
 
 function isRobloxNoToolsError(err: unknown): boolean {
@@ -34,14 +45,14 @@ async function discoverToolsWithRetry(
   call: () => Promise<{ tools?: McpTool[] }>,
   shouldRetryEmpty: boolean,
 ): Promise<McpTool[]> {
-  const attempts = shouldRetryEmpty ? 4 : 1;
+  const attempts = shouldRetryEmpty ? 2 : 1;
   let tools: McpTool[] = [];
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     const result = await call();
     tools = result?.tools ?? [];
     if (tools.length > 0 || attempt === attempts - 1) break;
-    await new Promise(resolve => setTimeout(resolve, 2500));
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   return tools;
@@ -52,8 +63,8 @@ export const MCP_PRESETS = [
   {
     id: "roblox-studio",
     name: "Roblox Studio",
-    description: "Control Roblox Studio â€” read/write scripts, manage instances, run commands in Studio",
-    icon: "ðŸŽ®",
+    description: "Control Roblox Studio — read/write scripts, manage instances, run commands in Studio",
+    icon: "🎮",
     transport: "stdio" as const,
     command: "cmd.exe",
     args: ["/c", "%LOCALAPPDATA%\\Roblox\\mcp.bat"],
@@ -122,7 +133,7 @@ export const MCP_PRESETS = [
   {
     id: "puppeteer",
     name: "Puppeteer",
-    description: "Control a browser â€” navigate, screenshot, interact with web pages",
+    description: "Control a browser — navigate, screenshot, interact with web pages",
     icon: "ðŸŒ",
     transport: "stdio" as const,
     command: "cmd.exe",
@@ -187,11 +198,11 @@ async function httpNotify(url: string, method: string, params?: unknown): Promis
 
 
 async function stdioCall(serverId: string, method: string, params?: unknown): Promise<unknown> {
-  return invoke<unknown>("mcp_call", {
-    serverId,
-    method,
-    params: params ?? {},
-  });
+  const call = invoke<unknown>("mcp_call", { serverId, method, params: params ?? {} });
+  return Promise.race([
+    call,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`MCP ${method} timed out`)), 12000)),
+  ]);
 }
 
 async function stdioNotify(serverId: string, method: string, params?: unknown): Promise<void> {
@@ -203,15 +214,16 @@ async function stdioNotify(serverId: string, method: string, params?: unknown): 
 }
 
 
-export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
+export async function mcpConnect(server: McpServer, allowRecovery = true): Promise<McpTool[]> {
   if (server.transport === "stdio") {
     const isRoblox = isRobloxServer(server);
+    if (isRoblox && robloxToolsCache && Date.now() - robloxToolsCache.at < 30000) return robloxToolsCache.tools;
     try {
       let processState = isRoblox
         ? await getMcpProcessState(server.id)
         : { running: false, initialized: false };
 
-      if (!isRoblox || !processState.running) {
+      if (!processState.running) {
         await invoke("mcp_spawn", {
           serverId: server.id,
           command: server.command ?? "",
@@ -235,10 +247,17 @@ export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
         isRoblox,
       );
       if (isRoblox && tools.length === 0) {
-        throw new Error(ROBLOX_NO_TOOLS_MESSAGE);
+        return ROBLOX_TOOL_NAMES.map(name => ({ name, description: "Roblox Studio MCP tool", inputSchema: { type: "object", properties: {} } }));
       }
+      if (isRoblox) robloxToolsCache = { at: Date.now(), tools };
       return tools;
     } catch (err) {
+      if (isRoblox && allowRecovery) {
+        // One deterministic recovery attempt: discard only this server's
+        // stdio process, then repeat the documented handshake from scratch.
+        await invoke("mcp_kill", { serverId: server.id }).catch(() => {});
+        return mcpConnect(server, false);
+      }
       if (!(isRoblox && isRobloxNoToolsError(err))) {
         await invoke("mcp_kill", { serverId: server.id }).catch(() => {});
       }
@@ -254,9 +273,9 @@ export async function mcpConnect(server: McpServer): Promise<McpTool[]> {
     await httpNotify(url, "notifications/initialized", {});
     const tools = await discoverToolsWithRetry(
       () => httpCall(url, "tools/list", {}) as Promise<{ tools?: McpTool[] }>,
-      server.id.startsWith("roblox-studio"),
+      isRobloxServer(server),
     );
-    if (server.id.startsWith("roblox-studio") && tools.length === 0) {
+    if (isRobloxServer(server) && tools.length === 0) {
       throw new Error(ROBLOX_NO_TOOLS_MESSAGE);
     }
     return tools;
@@ -300,13 +319,19 @@ export function buildMcpToolsPrompt(servers: McpServer[]): string {
 
   const lines: string[] = [
     "\nâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•",
-    "MCP TOOLS â€” External integrations",
+    "MCP TOOLS - External integrations",
     "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•",
     "CRITICAL RULES:",
-    "1. Use the EXACT parameter names from the schema below â€” no substitutions.",
+    "For Roblox Studio, use the advertised mcp__roblox-studio__ tool directly whenever the user asks to inspect, create, edit, run, or test something in Studio.",
+    "Never answer with standalone Luau code when a matching Roblox tool exists. Never invent tool names, arguments, paths, or results.",
+    "Before mutating Studio, inspect first when possible. Use the exact JSON schema returned by tools/list; do not substitute file_path for target_file or code for the required field.",
+    "For multi_edit, send file_path as a dot-notation Roblox path and edits as a real JSON array of {old_string,new_string}; for execute_luau, send datamodel_type plus code as plain Luau text with real newlines.",
+    "For execute_luau, use datamodel_type=Client for LocalPlayer, PlayerGui, PlayerScripts, or character code. Use Edit only for server/edit-time APIs.",
+    "For multi_edit, edits MUST be a JSON array like [{\"old_string\":\"\",\"new_string\":\"...\"}], never YAML with '- new_string:'.",
+    "1. Use the EXACT parameter names from the schema below — no substitutions.",
     "2. Array parameters (e.g. edits, properties) MUST be valid JSON arrays: [{...}, {...}]",
     "3. Object parameters MUST be valid JSON objects: {\"key\": \"value\"}",
-    "4. DO NOT wrap arrays/objects in quotes â€” they must be raw JSON, not strings.",
+    "4. DO NOT wrap arrays/objects in quotes — they must be raw JSON, not strings.",
     "5. For Roblox Studio: multi_edit requires the script to ALREADY EXIST.",
     "   To CREATE a new script, use execute_luau with Instance.new() instead.",
     "",
@@ -320,14 +345,14 @@ export function buildMcpToolsPrompt(servers: McpServer[]): string {
   ];
 
   for (const server of active) {
-    lines.push(`â”€â”€ ${server.name} (id: ${server.id}) â”€â”€`);
+    lines.push(`-- ${server.name} (id: ${server.id}) --`);
 
     const cfg = server.settings;
     if (cfg) {
       const hints: string[] = [];
       if (cfg.casing) hints.push(`Use ${cfg.casing} naming convention for identifiers`);
       if (cfg.includeComments) hints.push("Include descriptive comments in generated code");
-      else hints.push("Do NOT include comments in generated code â€” keep it concise");
+      else hints.push("Do NOT include comments in generated code - keep it concise");
       if (cfg.useModuleScripts) hints.push("Prefer ModuleScript over Script/LocalScript where appropriate");
       if (cfg.maxResults) hints.push(`Limit search/list results to ${cfg.maxResults} items`);
       if (hints.length) lines.push(`Settings: ${hints.join(". ")}.`);

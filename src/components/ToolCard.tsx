@@ -118,7 +118,7 @@ function getDisplayName(name: string): string {
 			.split("-")
 			.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
 			.join(" ");
-		return `${serverLabel} Â· ${toolName}`;
+		return `${serverLabel} · ${toolName}`;
 	}
 	const labels: Record<string, string> = {
 		"run-command": "Ran",
@@ -333,7 +333,7 @@ function ToolCardStackImpl({ calls }: { calls: ToolCallRecord[] }) {
 				onClick={() => setOpen(o => !o)}
 				className="no-press flex w-full items-center gap-2 px-1 py-1.5 text-left transition-colors hover:bg-accent/20"
 			>
-				<Icon className={cn("tool-row-icon h-3.5 w-3.5 shrink-0", STATUS_ICON_COLOR[status])} />
+				{!active.name.startsWith("mcp__") && <Icon className={cn("tool-row-icon h-3.5 w-3.5 shrink-0", STATUS_ICON_COLOR[status])} />}
 				<div className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
 					<span className={cn("shrink-0 text-sm font-medium", status === "running" && "shimmer-text")}>{displayName}</span>
 					<Badge
@@ -341,7 +341,7 @@ function ToolCardStackImpl({ calls }: { calls: ToolCallRecord[] }) {
 						className="h-5 shrink-0 border-0 bg-transparent px-0 text-[0.65rem] font-medium tabular-nums text-muted-foreground"
 						title={`${calls.length} calls`}
 					>
-						Ã—{calls.length}
+										×{calls.length}
 					</Badge>
 					{targetPreview && (
 						<span

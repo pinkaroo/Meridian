@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { FileText, Image as ImageIcon, FileCode, File, Trash2, Download, Pencil } from "lucide-react";
+import { FileText, Image as ImageIcon, FileCode, File, Trash2, Download, Pencil, Copy } from "lucide-react";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -61,7 +61,7 @@ export function FileViewerPanel({ open, onClose, files, onDelete, onRename }: Fi
 
 	return (
 		<Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-			<DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0">
+			<DialogContent className="w-[calc(100vw-2rem)] max-w-4xl h-[80vh] flex flex-col p-0 gap-0">
 				<DialogHeader className="px-6 py-4 border-b">
 					<DialogTitle className="flex items-center gap-2">
 						<File className="h-5 w-5" />
@@ -71,7 +71,7 @@ export function FileViewerPanel({ open, onClose, files, onDelete, onRename }: Fi
 				</DialogHeader>
 
 				<div className="flex flex-1 min-h-0">
-					<div className="w-72 border-r overflow-y-auto">
+					<div className="w-72 max-md:w-44 shrink-0 border-r overflow-y-auto">
 						{sorted.length === 0 ? (
 							<div className="p-6 text-sm text-muted-foreground text-center">
 								No files in this conversation yet.
@@ -175,10 +175,15 @@ export function FileViewerPanel({ open, onClose, files, onDelete, onRename }: Fi
 											{selected.mimeType} * {formatSize(selected.size)}
 										</div>
 									</div>
+									<div className="flex shrink-0 items-center gap-2">
 									<Button size="sm" variant="outline" onClick={() => handleDownload(selected)}>
 										<Download className="h-3.5 w-3.5 mr-1.5" />
 										Download
 									</Button>
+									{selected.content != null && <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(selected.content ?? "")}>
+										<Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
+									</Button>}
+									</div>
 								</div>
 								<div className="flex-1 overflow-auto attachment-checker">
 									{selected.mimeType.startsWith("image/") ? (

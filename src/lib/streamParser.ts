@@ -19,6 +19,8 @@ interface CurrentTool {
 
 const TOOL_PREFIX = "[" + "TOOL:";
 const TOOL_CLOSE = "[" + "/TOOL]";
+const PRESENT_PREFIX = "[PRESENT-FILE";
+const PRESENT_CLOSE = "[/PRESENT-FILE]";
 
 function findTagClose(s: string, startAt: number): number {
 	let i = startAt;
@@ -92,9 +94,12 @@ export class StreamParser {
 	}
 
 	private stepText(events: ParserEvent[]): boolean {
-		const openIdx = this.pending.indexOf(TOOL_PREFIX);
+		const toolIdx = this.pending.indexOf(TOOL_PREFIX);
+		const presentIdx = this.pending.toUpperCase().indexOf(PRESENT_PREFIX);
+		const openIdx = toolIdx === -1 ? presentIdx : (presentIdx === -1 ? toolIdx : Math.min(toolIdx, presentIdx));
+		const isPresent = openIdx === presentIdx && presentIdx !== -1;
 		if (openIdx === -1) {
-			const hold = TOOL_PREFIX.length - 1;
+			const hold = Math.max(TOOL_PREFIX.length, PRESENT_PREFIX.length) - 1;
 			if (this.pending.length > hold) {
 				const emit = this.pending.slice(0, this.pending.length - hold);
 				events.push({ type: "text", text: emit });
@@ -109,7 +114,8 @@ export class StreamParser {
 			return true;
 		}
 
-		const closeIdx = findTagClose(this.pending, TOOL_PREFIX.length);
+		const prefixLength = isPresent ? PRESENT_PREFIX.length : TOOL_PREFIX.length;
+		const closeIdx = findTagClose(this.pending, prefixLength);
 		if (closeIdx === -1) {
 			if (this.pending.length > 131072) {
 				events.push({ type: "text", text: this.pending });
@@ -119,10 +125,10 @@ export class StreamParser {
 			return false;
 		}
 
-		const tagInner = this.pending.slice(TOOL_PREFIX.length, closeIdx).trim();
+		const tagInner = this.pending.slice(prefixLength, closeIdx).trim();
 		const spaceIdx = tagInner.indexOf(" ");
-		const name = spaceIdx === -1 ? tagInner : tagInner.slice(0, spaceIdx);
-		const attrsRaw = spaceIdx === -1 ? "" : tagInner.slice(spaceIdx + 1);
+		const name = isPresent ? "present-file" : (spaceIdx === -1 ? tagInner : tagInner.slice(0, spaceIdx));
+		const attrsRaw = isPresent ? tagInner : (spaceIdx === -1 ? "" : tagInner.slice(spaceIdx + 1));
 		const attrs = parseAttrs(attrsRaw);
 
 		const isThinking = name === "thinking";
@@ -147,9 +153,12 @@ export class StreamParser {
 			return true;
 		}
 
-		const closeIdx = this.pending.indexOf(TOOL_CLOSE);
+		const closeToken = this.currentTool.name === "present-file" ? PRESENT_CLOSE : TOOL_CLOSE;
+		const closeIdx = this.currentTool.name === "present-file" 
+			? this.pending.toUpperCase().indexOf(closeToken.toUpperCase())
+			: this.pending.indexOf(closeToken);
 		if (closeIdx === -1) {
-			const hold = TOOL_CLOSE.length - 1;
+			const hold = closeToken.length - 1;
 			if (this.pending.length > hold) {
 				const emit = this.pending.slice(0, this.pending.length - hold);
 				this.pending = this.pending.slice(this.pending.length - hold);
@@ -188,7 +197,7 @@ export class StreamParser {
 		}
 
 		this.currentTool = null;
-		this.pending = this.pending.slice(closeIdx + TOOL_CLOSE.length);
+		this.pending = this.pending.slice(closeIdx + closeToken.length);
 		this.state = "TEXT";
 		return true;
 	}

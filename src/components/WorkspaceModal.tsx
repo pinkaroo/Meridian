@@ -190,7 +190,7 @@ export default function WorkspaceModal({ workspace, onSave, onClose, onDelete }:
 												className="shrink-0 gap-1.5"
 											>
 												<FolderOpen className="h-4 w-4" />
-												{browsingDirectory ? "Openingâ€¦" : "Browse"}
+														{browsingDirectory ? "Opening..." : "Browse"}
 											</Button>
 										</div>
 										<p className="text-xs text-muted-foreground">

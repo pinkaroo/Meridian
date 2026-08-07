@@ -7,14 +7,22 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 
 const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-chat";
 const PROVIDER_KEY_SERVICE: &str = "com.meridian.providers";
+static LUAU_COMMAND: OnceLock<Mutex<Option<serde_json::Value>>> = OnceLock::new();
 
-fn start_rocode_bridge(app: AppHandle) {
+#[tauri::command]
+fn luau_send_command(text: String, provider: Option<String>) -> Result<(), String> {
+    if text.trim().is_empty() { return Err("Command text is empty.".into()); }
+    *LUAU_COMMAND.get_or_init(|| Mutex::new(None)).lock().map_err(|_| "LuaU bridge unavailable.")? = Some(serde_json::json!({"text": text, "provider": provider}));
+    Ok(())
+}
+
+fn start_luau_bridge(app: AppHandle) {
     std::thread::spawn(move || {
         let listener = match TcpListener::bind(("127.0.0.1", 38541)) { Ok(value) => value, Err(_) => return };
         for stream in listener.incoming() {
@@ -23,12 +31,18 @@ fn start_rocode_bridge(app: AppHandle) {
             let size = stream.read(&mut buffer).unwrap_or(0);
             let request = String::from_utf8_lossy(&buffer[..size]);
             let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
-            if request.starts_with("POST /v1/browser-event") {
-                if let Ok(event) = serde_json::from_str::<serde_json::Value>(body) {
-                    let _ = app.emit("rocode://browser-event", event);
+            if request.starts_with("POST /v1/command") {
+                if let Ok(command) = serde_json::from_str::<serde_json::Value>(body) {
+                    *LUAU_COMMAND.get_or_init(|| Mutex::new(None)).lock().unwrap() = Some(command);
                 }
             }
-            let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
+            if request.starts_with("POST /v1/browser-event") {
+                if let Ok(event) = serde_json::from_str::<serde_json::Value>(body) {
+                    let _ = app.emit("luau://browser-event", event);
+                }
+            }
+            let payload = if request.starts_with("GET /health") || request.starts_with("GET /v1/status") { r#"{"ok":true,"service":"meridian-luau-bridge","version":1}"#.to_string() } else if request.starts_with("GET /v1/command") { serde_json::json!({"ok":true,"command":LUAU_COMMAND.get_or_init(|| Mutex::new(None)).lock().unwrap().take()}).to_string() } else { r#"{"ok":true}"#.to_string() };
+            let response = format!("HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", payload.len(), payload);
             let _ = stream.write_all(response.as_bytes());
         }
     });
@@ -254,7 +268,8 @@ async fn chat_stream(
             let status = r.status();
             let body_text = r.text().await.unwrap_or_default();
             let err = format!(
-                "DeepSeek API error {}: {}",
+                "{} API error {}: {}",
+                provider,
                 status,
                 &body_text[..body_text.len().min(500)]
             );
@@ -268,7 +283,7 @@ async fn chat_stream(
             return Err(err);
         }
         Err(e) => {
-            let err = format!("DeepSeek request failed: {}", e);
+            let err = format!("{} request failed: {}", provider, e);
             let _ = app.emit(
                 "chat-error",
                 ErrorPayload {
@@ -2115,7 +2130,7 @@ fn mcp_spawn(
 ) -> Result<(), String> {
     use std::process::Stdio;
 
-    if server_id.starts_with("roblox-studio") {
+    if server_id.to_ascii_lowercase().starts_with("roblox") {
         let launch = resolve_roblox_mcp_launch(false)?;
         command = launch.command;
         args = launch.args;
@@ -2504,17 +2519,6 @@ fn resolve_roblox_mcp_launch(write_missing_bat: bool) -> Result<RobloxMcpLaunch,
         write_roblox_mcp_bat(studio, &mcp_bat_path)?;
     }
 
-    if let Some(studio) = studio_mcp_path {
-        return Ok(RobloxMcpLaunch {
-            command: studio.to_string_lossy().to_string(),
-            args: vec!["--stdio".to_string()],
-            mcp_bat_path: mcp_bat_path.to_string_lossy().to_string(),
-            studio_mcp_path: Some(studio.to_string_lossy().to_string()),
-            config_path: config_path.to_string_lossy().to_string(),
-            mcp_bat_exists: mcp_bat_path.exists(),
-        });
-    }
-
     if mcp_bat_path.exists() {
         return Ok(RobloxMcpLaunch {
             command: "cmd.exe".to_string(),
@@ -2523,6 +2527,17 @@ fn resolve_roblox_mcp_launch(write_missing_bat: bool) -> Result<RobloxMcpLaunch,
             studio_mcp_path: None,
             config_path: config_path.to_string_lossy().to_string(),
             mcp_bat_exists: true,
+        });
+    }
+
+    if let Some(studio) = studio_mcp_path {
+        return Ok(RobloxMcpLaunch {
+            command: studio.to_string_lossy().to_string(),
+            args: vec!["--stdio".to_string()],
+            mcp_bat_path: mcp_bat_path.to_string_lossy().to_string(),
+            studio_mcp_path: Some(studio.to_string_lossy().to_string()),
+            config_path: config_path.to_string_lossy().to_string(),
+            mcp_bat_exists: mcp_bat_path.exists(),
         });
     }
 
@@ -2815,7 +2830,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
-            start_rocode_bridge(app.handle().clone());
+            start_luau_bridge(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 window.set_decorations(false)?;
             }
@@ -2824,6 +2839,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
 chat_stream,
             save_provider_key,
+            luau_send_command,
             provider_connections,
             provider_models,
             chat_stream_vision,

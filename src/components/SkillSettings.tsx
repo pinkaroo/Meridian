@@ -148,7 +148,7 @@ export default function SkillSettings({ settings }: Props) {
 				Skills that ship a <code className="rounded bg-muted px-1 py-0.5 text-[0.65rem]">settings.json</code> schema. Secret fields are encrypted with the vault passphrase.
 			</p>
 
-			{loading && <div className="py-4 text-center text-xs text-muted-foreground">Loading skillsâ€¦</div>}
+			{loading && <div className="py-4 text-center text-xs text-muted-foreground">Loading skills...</div>}
 
 			{!loading && configurable.length === 0 && (
 				<div className="rounded-md border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
@@ -180,7 +180,7 @@ export default function SkillSettings({ settings }: Props) {
 								)}
 							</div>
 							<div className="mt-0.5 truncate text-xs text-muted-foreground">
-								{row.schema!.fields.length} field{row.schema!.fields.length === 1 ? "" : "s"} Â· {row.schema!.fields.map(f => f.label).join(", ")}
+								{row.schema!.fields.length} field{row.schema!.fields.length === 1 ? "" : "s"} · {row.schema!.fields.map(f => f.label).join(", ")}
 							</div>
 						</div>
 						<span className="text-xs text-muted-foreground">Configure â†’</span>
@@ -319,7 +319,7 @@ function VaultModal({ mode, onClose, onSuccess }: { mode: "init" | "unlock"; onC
 				<DialogFooter>
 					<Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
 					<Button onClick={submit} disabled={busy}>
-						{busy ? "Workingâ€¦" : mode === "init" ? "Set passphrase" : "Unlock"}
+						{busy ? "Working..." : mode === "init" ? "Set passphrase" : "Unlock"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -381,7 +381,7 @@ function SkillEditor({ row, vaultState, onUnlockNeeded, onClose, onSaved }: {
 					<DialogTitle>{row.entry.name}</DialogTitle>
 				</DialogHeader>
 
-				{loading && <div className="py-4 text-center text-xs text-muted-foreground">Loadingâ€¦</div>}
+				{loading && <div className="py-4 text-center text-xs text-muted-foreground">Loading...</div>}
 
 				{!loading && needsUnlock && (
 					<div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
@@ -418,7 +418,7 @@ function SkillEditor({ row, vaultState, onUnlockNeeded, onClose, onSaved }: {
 					<div className="flex gap-2">
 						<Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
 						<Button onClick={save} disabled={saving || loading || needsUnlock}>
-							{saving ? "Savingâ€¦" : "Save"}
+							{saving ? "Saving..." : "Save"}
 						</Button>
 					</div>
 				</DialogFooter>

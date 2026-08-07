@@ -316,9 +316,6 @@ const byMode = conversations.filter(c => (c.mode ?? "agent") === modeTab);
 						>
 							Chat
 						</button>
-						<button type="button" onClick={() => onOpenSettings("tools")} className="flex-1 rounded px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground" title="Configure RoCode extension">
-							RoCode
-						</button>
 					</div>
 				</div>
 				<div className="px-3 pb-2">

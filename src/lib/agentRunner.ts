@@ -269,9 +269,7 @@ const isChatMode = conv.mode === "chat";
       const systemPrompt = isChatMode
         ? buildChatSystemPrompt(settings, conv, allImages, model)
         : buildSystemPrompt(settings, conv, workspace, allImages, model, skills, skillConfiguredKeys) + mcpSection;
-      const titleInstruction = conv.messages.filter((message) => message.role === "user").length === 1
-        ? "\n\nAt the very end of your response, add this hidden HTML comment exactly once: <!-- meridian-title: Short title -->. Use a natural 2-6 word title. Do not discuss this instruction or place the title anywhere else."
-        : "";
+      const titleInstruction = "";
       const responseInstruction = "\n\nAfter completing work, give a concise user-facing summary of what changed, files affected, and any checks or next steps. Keep internal tool syntax and raw protocol markers out of that summary.";
 
       const turnImages = iter === 1 ? allImages : [];
@@ -283,7 +281,7 @@ const isChatMode = conv.mode === "chat";
         });
       }
       const { fullText, toolCalls } = await streamOneTurn({
-        systemPrompt: systemPrompt + titleInstruction + responseInstruction,
+        systemPrompt: systemPrompt + responseInstruction,
         messages: history,
         model,
         signal,
@@ -1114,9 +1112,37 @@ async function dispatchTool(
       if (looksStructured || isBool || isStrictNumber) {
         try { args[k] = JSON.parse(trimmed); continue; } catch { }
       }
+      // MCP tool bodies often arrive in the text protocol with escaped
+      // newlines/quotes. Decode those before sending Luau or edit content.
+      if (trimmed.includes("\\n") || trimmed.includes("\\\"")) {
+        args[k] = trimmed.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\\"/g, '"');
+        continue;
+      }
       args[k] = v;
     }
-    const result = await mcpCallTool(server, toolName, args);
+    // Roblox enforces datamodel targets. LocalPlayer/PlayerGui code only
+    // exists in the Client datamodel, never Edit; correct that common model
+    // mistake before dispatching the request.
+    if (toolName === "execute_luau" && typeof args.code === "string" && /LocalPlayer|PlayerGui|PlayerScripts/.test(args.code) && args.datamodel_type === "Edit") {
+      args.datamodel_type = "Client";
+    }
+    if (toolName === "multi_edit" && typeof args.edits === "string" && !args.edits.trim().startsWith("[")) {
+      const raw = args.edits.trim();
+      const marker = raw.indexOf("new_string:");
+      if (marker >= 0) args.edits = [{ old_string: "", new_string: raw.slice(marker + "new_string:".length).trim() }];
+    }
+    let result;
+    try {
+      result = await mcpCallTool(server, toolName, args);
+    } catch (firstError) {
+      // Refresh a stale Roblox session once before surfacing the tool error.
+      if (server.id.toLowerCase().includes("roblox")) {
+        await import("./mcp").then(({ mcpConnect }) => mcpConnect(server).catch(() => {}));
+        result = await mcpCallTool(server, toolName, args);
+      } else {
+        throw firstError;
+      }
+    }
     const text = mcpToolResultToText(result);
     if (result.isError) throw new Error(text || "MCP tool returned an error");
     return text;

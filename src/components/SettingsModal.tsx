@@ -455,7 +455,7 @@ function ToolsTab({ settings, onUpdate }: { settings: AppSettings; onUpdate: (u:
 
 		return (
 			<div>
-				<SectionTitle first>Working Directory</SectionTitle>
+				<SectionTitle>Working Directory</SectionTitle>
 				<p className="mb-1 text-xs text-muted-foreground">Control where the agent is allowed to write files.</p>
 				<AgentToggleRow
 					label="Restrict writes to working directory"

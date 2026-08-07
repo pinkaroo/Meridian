@@ -75,7 +75,7 @@ import { useState, useEffect, useRef, type ComponentType } from "react";
 				id: `model-${m.id}`,
 				type: "model" as const,
 				label: activeConversationId && onSelectModel ? `Use ${m.name}` : m.name,
-				sublabel: `Model Â· ${m.tag}`,
+				sublabel: `Model · ${m.tag}`,
 				action: () => {
 					if (activeConversationId && onSelectModel) onSelectModel(m.id);
 					else onOpenSettings("models");
@@ -133,7 +133,7 @@ import { useState, useEffect, useRef, type ComponentType } from "react";
 							<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 							<Input
 								autoFocus
-								placeholder="Search chats, workspaces, models, settingsâ€¦"
+							placeholder="Search chats, workspaces, models, settings…"
 								value={query}
 								onChange={(e) => setQuery(e.target.value)}
 								onKeyDown={handleKey}

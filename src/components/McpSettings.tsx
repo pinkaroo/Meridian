@@ -129,6 +129,10 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 	const [robloxConfigured, setRobloxConfigured] = useState<boolean | null>(null);
 	const [robloxStatus, setRobloxStatus] = useState<string>("");
 	const [robloxWriting, setRobloxWriting] = useState(false);
+	const [debugOpen, setDebugOpen] = useState(false);
+	const [debugText, setDebugText] = useState("");
+	const [debugRunning, setDebugRunning] = useState(false);
+	const autoProbeInFlight = useRef(false);
 
 	const [customName, setCustomName] = useState("");
 	const [customTransport, setCustomTransport] = useState<"stdio" | "http">("stdio");
@@ -139,6 +143,10 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 	const serversRef = useRef(servers);
 
 	useEffect(() => { serversRef.current = servers; }, [servers]);
+	useEffect(() => {
+		const roblox = servers.find(s => s.id.toLowerCase().includes("roblox") || s.name.toLowerCase().includes("roblox studio"));
+		if (roblox && !roblox.autoConnect) updateServers(current => current.map(s => s.id === roblox.id ? { ...s, autoConnect: true } : s));
+	}, [servers]);
 
 	function updateServers(updater: McpServer[] | ((current: McpServer[]) => McpServer[])) {
 		const next = typeof updater === "function" ? updater(serversRef.current) : updater;
@@ -147,12 +155,37 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 	}
 
 	useEffect(() => {
-		const toConnect = servers.filter(s => s.enabled && s.autoConnect && s.status === "disconnected");
+		// A persisted `connecting` state can survive an interrupted app session.
+		// Treat it as disconnected so auto-connect can recover on the next launch.
+		const toConnect = servers.filter(s => s.enabled && s.autoConnect && (s.status === "disconnected" || s.status === "connecting"));
 		(async () => {
 			for (const srv of toConnect) {
 				try { await connectServer(srv, true); } catch { /* per-server error already stored */ }
 			}
 		})();
+	}, []);
+	useEffect(() => {
+		const timer = window.setInterval(() => {
+			if (autoProbeInFlight.current) return;
+			const retryable = serversRef.current.filter(s => s.autoConnect && s.enabled && (s.status === "disconnected" || s.status === "error") && (s.id.toLowerCase().includes("roblox") || s.name.toLowerCase().includes("roblox studio")));
+			if (retryable.length) {
+				autoProbeInFlight.current = true;
+				void connectServer(retryable[0], true).catch(() => {}).finally(() => { autoProbeInFlight.current = false; });
+			}
+		}, 500);
+		return () => window.clearInterval(timer);
+	}, []);
+	useEffect(() => {
+		const timer = window.setInterval(() => {
+			const stuck = serversRef.current.filter(s => s.status === "connecting");
+			if (stuck.length) {
+				setConnectingId(current => stuck.some(s => s.id === current) ? null : current);
+				updateServers(current => current.map(s => s.status === "connecting"
+					? { ...s, status: "error" as const, error: "Roblox MCP did not respond in time. Restart Studio MCP and retry." }
+					: s));
+			}
+		}, 10000);
+		return () => window.clearInterval(timer);
 	}, []);
 
 	async function connectServer(server: McpServer, silent = false) {
@@ -163,8 +196,21 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 			updateServers(current => current.map(s => s.id === server.id ? { ...s, ...patch } : s));
 		};
 		patchStatus({ status: "connecting" });
+		// Native invokes can outlive a rejected promise during a crashed stdio
+		// process. Keep the UI recoverable even if that happens.
+		const watchdog = window.setTimeout(() => {
+			patchStatus({ status: "error", error: "MCP connection did not respond. Restart Roblox Studio MCP and retry." });
+			if (!silent && mounted.current) setConnectingId(null);
+		}, 10000);
 		try {
-			const tools = await mcpConnect(server);
+			const isRoblox = server.id.toLowerCase().includes("roblox") || server.name.toLowerCase().includes("roblox studio");
+			const connectionServer = isRoblox
+				? { ...server, transport: "stdio" as const, command: "cmd.exe", args: ["/c", "%LOCALAPPDATA%\\Roblox\\mcp.bat"] }
+				: server;
+			const tools = await Promise.race([
+				mcpConnect(connectionServer),
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Roblox Studio MCP did not provide tools in time. Run the handshake probe or retry.")), 20000)),
+			]);
 			patchStatus({ status: "connected", tools, error: undefined });
 		} catch (err: unknown) {
 			const msg = String(err);
@@ -172,6 +218,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 			if (!silent && mounted.current) setError(msg);
 			throw err;
 		} finally {
+			window.clearTimeout(watchdog);
 			if (!silent && mounted.current) setConnectingId(null);
 		}
 	}
@@ -264,7 +311,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 			id,
 			name: selectedPreset.name,
 			enabled: true,
-			autoConnect: false,
+			autoConnect: selectedPreset.id === "roblox-studio" ? true : false,
 			transport: selectedPreset.transport,
 			command: selectedPreset.command,
 			args,
@@ -321,12 +368,48 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 		} 
 		else onClose();
 	};
+	async function openDiagnostics() {
+		const started = Date.now();
+		const lines = [`Meridian MCP diagnostics`, `Time: ${new Date().toISOString()}`];
+		try {
+			const launch = await invoke<RobloxMcpLaunchInfo>("roblox_mcp_launch_info");
+			lines.push(`Launcher: ${launch.mcpBatExists ? launch.mcpBatPath : (launch.studioMcpPath ?? "missing")}`);
+			lines.push(`Config: ${launch.configPath}`);
+		} catch (e) { lines.push(`Launcher error: ${String(e)}`); }
+		for (const server of serversRef.current) {
+			if (!server.id.toLowerCase().includes("roblox") && !server.name.toLowerCase().includes("roblox studio")) continue;
+			try {
+				const state = await invoke<{ running: boolean; initialized: boolean }>("mcp_process_state", { serverId: server.id });
+				lines.push(`Server ${server.id}: UI=${server.status ?? "disconnected"}, running=${state.running}, initialized=${state.initialized}, tools=${server.tools?.length ?? 0}`);
+			} catch (e) { lines.push(`Server ${server.id}: state error: ${String(e)}`); }
+		}
+		lines.push(`Elapsed: ${Date.now() - started}ms`);
+		setDebugText(lines.join("\n"));
+		setDebugOpen(true);
+	}
+	async function runHandshakeProbe() {
+		setDebugRunning(true);
+		const started = Date.now();
+		const server = serversRef.current.find(s => s.id.toLowerCase().includes("roblox") || s.name.toLowerCase().includes("roblox studio"));
+		if (!server) { setDebugText("No Roblox Studio server is configured."); setDebugRunning(false); return; }
+		try {
+			const probeServer = { ...server, transport: "stdio" as const, command: "cmd.exe", args: ["/c", "%LOCALAPPDATA%\\Roblox\\mcp.bat"] };
+			const tools = await Promise.race([
+				mcpConnect(probeServer),
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error("probe timed out")), 5000)),
+			]);
+			updateServers(current => current.map(s => s.id === server.id ? { ...s, status: "connected" as const, tools, error: undefined } : s));
+			setDebugText(`${debugText}\nProbe: success (${Date.now() - started}ms), tools=${tools.length}\n${tools.slice(0, 10).map(t => t.name).join(", ")}`);
+		} catch (e) {
+			setDebugText(`${debugText}\nProbe: failed (${Date.now() - started}ms)\n${String(e)}`);
+		} finally { setDebugRunning(false); }
+	}
 
 	const body = (
 		<>
 				{(!embedded || view !== "list") && <DialogHeader className="border-b border-border px-6 py-4">
 					<DialogTitle>MCP Servers</DialogTitle>
-					<DialogDescription>Model Context Protocol â€” connect external tools and data sources</DialogDescription>
+					<DialogDescription>Model Context Protocol - connect external tools and data sources</DialogDescription>
 				</DialogHeader>}
 
 				<ScrollArea className={embedded && view === "list" ? "h-auto max-h-none overflow-visible" : "max-h-[calc(85vh-80px)]"}>
@@ -360,14 +443,14 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 														<div className="truncate text-sm font-semibold">{srv.name}</div>
 														<div className="truncate text-xs text-muted-foreground">
 															{srv.transport === "stdio" ? (srv.command ?? "") : (srv.url ?? "")}
-															{srv.tools ? ` Â· ${srv.tools.length} tools` : ""}
-															{srv.autoConnect ? " Â· auto-connect" : ""}
+										{srv.tools ? ` · ${srv.tools.length} tools` : ""}
+										{srv.autoConnect ? " · auto-connect" : ""}
 														</div>
 													</div>
 													<div className="flex items-center gap-1">
-														{(srv.status === "disconnected" || srv.status === "error") && srv.enabled && (
-															<Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => connectServer(srv)} disabled={connectingId === srv.id}>
-																{connectingId === srv.id ? "Connectingâ€¦" : "Connect"}
+												{(srv.status === "disconnected" || srv.status === "error" || srv.status === "connecting") && srv.enabled && (
+													<Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => connectServer(srv)} disabled={connectingId === srv.id}>
+											{connectingId === srv.id ? "Connecting..." : "Connect"}
 															</Button>
 														)}
 														{srv.status === "connected" && (
@@ -530,7 +613,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 												</div>
 												{robloxConfigured !== true && (
 													<Button size="sm" variant="outline" onClick={handleWriteRobloxConfig} disabled={robloxWriting} className="h-7 px-2 text-xs">
-														{robloxWriting ? "Writingâ€¦" : "Auto-configure"}
+												{robloxWriting ? "Writing..." : "Auto-configure"}
 													</Button>
 												)}
 											</div>
@@ -583,7 +666,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 										<>
 											<div className="flex flex-col gap-1">
 												<Label htmlFor="srv-cmd">Command</Label>
-												<Input id="srv-cmd" placeholder="cmd.exe, node, pythonâ€¦" value={customCommand} onChange={(e) => setCustomCommand(e.target.value)} />
+												<Input id="srv-cmd" placeholder="cmd.exe, node, python..." value={customCommand} onChange={(e) => setCustomCommand(e.target.value)} />
 											</div>
 											<div className="flex flex-col gap-1">
 												<Label htmlFor="srv-args">Arguments (space-separated)</Label>
@@ -604,13 +687,23 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 								</div>
 							</>
 						)}
+						{view === "list" && <div className="mt-4 border-t border-border pt-3"><Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={openDiagnostics}>Troubleshoot connection</Button></div>}
 					</div>
 				</ScrollArea>
 		</>
 	);
-	return embedded && view === "list" ? <div className="min-h-full w-full">{body}</div> : (
-		<Dialog open={embedded ? view !== "list" : true} onOpenChange={(o) => { if (!o) closeView(); }}>
-			<DialogContent className="max-h-[85vh] max-w-2xl gap-0 overflow-hidden p-0">{body}</DialogContent>
+	return <>
+		{embedded && view === "list" ? <div className="min-h-full w-full">{body}</div> : (
+			<Dialog open={embedded ? view !== "list" : true} onOpenChange={(o) => { if (!o) closeView(); }}>
+				<DialogContent className="max-h-[85vh] max-w-2xl gap-0 overflow-hidden p-0">{body}</DialogContent>
+			</Dialog>
+		)}
+		<Dialog open={debugOpen} onOpenChange={setDebugOpen}>
+			<DialogContent className="max-w-2xl">
+				<DialogHeader><DialogTitle>MCP diagnostics</DialogTitle><DialogDescription>Safe connection details only. No API keys or file contents are included.</DialogDescription></DialogHeader>
+				<Textarea readOnly value={debugText} rows={12} className="font-mono text-xs" />
+				<div className="flex justify-end gap-2"><Button variant="outline" onClick={runHandshakeProbe} disabled={debugRunning}>{debugRunning ? "Probing..." : "Run handshake probe"}</Button><Button variant="outline" onClick={() => navigator.clipboard.writeText(debugText)}>Copy report</Button><Button onClick={() => setDebugOpen(false)}>Close</Button></div>
+			</DialogContent>
 		</Dialog>
-	);
+	</>;
 }

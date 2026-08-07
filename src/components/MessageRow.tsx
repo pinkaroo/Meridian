@@ -104,8 +104,13 @@ function MessageRowImpl({
 				segment.kind === "thinking" ? segment.text.trim().length > 0 :
 				true
 			);
-		const shouldShowTiming = elapsedMs !== undefined && hasVisibleAssistantContent && elapsedMs >= 500;
 		const activitySegments = useMemo(() => (message.segments ?? []).filter((segment) => segment.kind === "thinking" || segment.kind === "checkpoint" || (segment.kind === "tool" && segment.call.name !== "wait-for-results")), [message.segments]);
+		const displayContent = message.content
+			.replace(/\[PRESENT-FILE[\s\S]*?\[\/PRESENT-FILE\]/gi, "")
+			.replace(/<!--\s*meridian-title:[\s\S]*?-->/gi, "")
+			.replace(/\[\[MERIDIAN_TITLE:[\s\S]*?\]\]/gi, "")
+			.trim();
+		const shouldShowTiming = elapsedMs !== undefined && hasVisibleAssistantContent && elapsedMs >= 500 && activitySegments.length > 0;
 		const groupedActivity = useMemo(() => {
 			const result: Array<MessageSegment | { kind: "tool-group"; calls: ToolCallRecord[] }> = [];
 			for (const segment of activitySegments) {
@@ -157,7 +162,7 @@ function MessageRowImpl({
 							)}
 							<div className="mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
 								<span className="mr-1 text-[0.7rem] text-muted-foreground">
-									{time}{message.edited && " Â· edited"}
+									{time}{message.edited && " · edited"}
 								</span>
 								<Tooltip>
 									<TooltipTrigger asChild>
@@ -239,7 +244,7 @@ function MessageRowImpl({
 							)}
 							{message.segments && message.segments.length > 0
 								? <MessageSegments segments={message.segments} streaming={!!message.streaming} onRestoreCheckpoint={onRestoreCheckpoint} />
-								: message.content ? <MarkdownRenderer content={message.content} /> : null}
+								: displayContent ? <MarkdownRenderer content={displayContent} /> : null}
 						</div>
 
 						{(message.memoryAdded || message.bookmarked || ((message.chatMode === "merge" || message.chatMode === "websearch") && hasVisibleAssistantContent)) && (
@@ -573,7 +578,7 @@ segments.forEach((segment, idx) => {
 								</div>
 								{src.snippet && (
 									<div className="block text-xs leading-tight text-muted-foreground/70">
-										{src.snippet.slice(0, 100)}{src.snippet.length > 100 ? "â€¦" : ""}
+										{src.snippet.slice(0, 100)}{src.snippet.length > 100 ? "..." : ""}
 									</div>
 								)}
 							</a>
@@ -602,7 +607,7 @@ segments.forEach((segment, idx) => {
 				<Separator className="flex-1" />
 				<div className="flex items-center gap-1">
 					<History className="h-3 w-3" />
-					<span className="text-xs font-semibold">Step {stepNumber} Â· {summary}</span>
+					<span className="text-xs font-semibold">Step {stepNumber} · {summary}</span>
 				</div>
 				{onRestore && !restored && count > 0 && (
 					confirming ? (

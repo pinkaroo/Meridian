@@ -6,6 +6,7 @@ import ModelPicker from "./components/ModelPicker";
 import ChatInputBox from "./components/ChatInputBox";
 import { LightboxProvider } from "./components/ImageLightbox";
 import { runAgent, restoreToCheckpoint } from "./lib/agentRunner";
+import { mcpCallTool, mcpConnect, MCP_PRESETS } from "./lib/mcp";
 import GlobalSearch from "./components/GlobalSearch";
 import InConvSearch from "./components/InConvSearch";
 import SettingsModal from "./components/SettingsModal";
@@ -123,6 +124,50 @@ export default function App() {
 	const [showActivityPanel, setShowActivityPanel] = useState(false);
 	const [showFileViewer, setShowFileViewer] = useState(false);
 	const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		let cancelled = false;
+		(async () => {
+			try {
+				const { listen } = await import("@tauri-apps/api/event");
+				unlisten = await listen<any>("luau://browser-event", async ({ payload }) => {
+					if (cancelled) return;
+					const configuredServer = storeRef.current.settings.mcpServers?.find(server => server.id.toLowerCase().includes("roblox") || server.name.toLowerCase().includes("roblox studio"));
+					const preset = MCP_PRESETS.find(server => server.id === "roblox-studio");
+					const server = configuredServer ?? (preset ? { ...preset, enabled: true } : undefined);
+					if (payload?.type === "browser-ready" || payload?.type === "session-started") {
+						let text = "[Meridian LuaU tools]";
+						try {
+							if (!server) throw new Error("Roblox Studio MCP is not configured.");
+							const tools = await mcpConnect(server);
+							text += "\nUse only these currently connected tools:\n" + tools.map(tool => `- ${tool.name}: ${tool.description ?? ""}\\nSchema: ${JSON.stringify(tool.inputSchema ?? {})}`).join("\n");
+						} catch (error) { text += `\nUnavailable: ${error instanceof Error ? error.message : String(error)}`; }
+						await fetch("http://127.0.0.1:38541/v1/command", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: `${text}\nDo not invent tools or results.` }) }).catch(() => {});
+						return;
+					}
+					if (payload?.type !== "tool-request" || !payload.tool?.name) return;
+					let result = "";
+					try {
+						if (!server) throw new Error("Roblox Studio MCP is not configured in Meridian.");
+						const tool = String(payload.tool.name);
+						const response = await Promise.race([
+							mcpCallTool(server, tool, payload.tool.arguments ?? {}),
+							new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Roblox Studio MCP timed out after 30 seconds.")), 30000)),
+						]);
+						result = JSON.stringify(response);
+					} catch (error) { result = JSON.stringify({ error: error instanceof Error ? error.message : String(error) }); }
+					for (let attempt = 0; attempt < 3; attempt++) {
+						try {
+							const response = await fetch("http://127.0.0.1:38541/v1/command", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: `<MERIDIAN_RESULT>${result}</MERIDIAN_RESULT>` }) });
+							if (response.ok) break;
+						} catch { if (attempt === 2) console.error("LuaU result delivery failed"); }
+						await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+					}
+				});
+			} catch { /* browser preview has no Tauri event bus */ }
+		})();
+		return () => { cancelled = true; unlisten?.(); };
+	}, []);
 	const [showInConvSearch, setShowInConvSearch] = useState(false);
 	const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
 	const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -738,7 +783,14 @@ onConsumeQueued: () => {
 			onDone: () => {
 				window.setTimeout(() => {
 				const finished = storeRef.current.conversations.find((item) => item.id === convId);
-				const firstUser = finished?.messages.find((message) => message.role === "user")?.content?.trim() ?? "";
+				const userMessages = finished?.messages.filter((message) => message.role === "user") ?? [];
+				const firstUser = userMessages[0]?.content?.trim() ?? "";
+				// Conversation titles are generated only after the first exchange.
+				// Never let later assistant replies replace the established title.
+				if (userMessages.length !== 1) {
+					finalizeElapsed(convId);
+					return;
+				}
 				const firstAssistantMessage = finished?.messages.find((message) => message.role === "assistant" && message.content?.trim());
 				const firstAssistant = firstAssistantMessage?.content?.trim() ?? "";
 				const titleMarker = firstAssistant.match(/<!--\s*meridian-title:\s*([^>]{2,80})\s*-->/i) ?? firstAssistant.match(/\[\[MERIDIAN_TITLE:\s*([^\]]{2,80})\]\]/i);
@@ -776,7 +828,7 @@ useEffect(() => {
 		executeAgentRef.current = executeAgent;
 	}, [executeAgent]);
 
-const handleSend = useCallback(async (text: string, attachments?: Attachment[]) => {
+	const handleSend = useCallback(async (text: string, attachments?: Attachment[]) => {
 		if (!text.trim() && (!attachments || attachments.length === 0)) return;
 		let conv = store.activeConversation;
 		const isFreshConv = !conv;
