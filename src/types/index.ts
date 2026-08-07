@@ -243,6 +243,7 @@ export interface McpServer {
 	status?: "disconnected" | "connecting" | "connected" | "error";
 	error?: string;
 	autoConnect?: boolean;
+	manuallyDisconnected?: boolean;
 }
 
 export type CasingStyle = "camelCase" | "PascalCase" | "snake_case" | "UPPER_CASE";

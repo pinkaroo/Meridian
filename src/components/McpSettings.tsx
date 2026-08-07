@@ -178,7 +178,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 				mcpConnect(connectionServer),
 				new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Roblox Studio MCP did not provide tools in time. Run the handshake probe or retry.")), 20000)),
 			]);
-			patchStatus({ status: "connected", tools, error: undefined });
+			patchStatus({ status: "connected", tools, error: undefined, manuallyDisconnected: false });
 		} catch (err: unknown) {
 			const msg = String(err);
 			patchStatus({ status: "error", error: msg });
@@ -193,7 +193,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 	async function disconnectServer(server: McpServer) {
 		await mcpDisconnect(server);
 		updateServers(current => current.map(s => s.id === server.id
-			? { ...s, status: "disconnected" as const, tools: undefined }
+			? { ...s, status: "disconnected" as const, tools: undefined, manuallyDisconnected: true }
 			: s
 		));
 	}
@@ -203,7 +203,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 	}
 
 	function toggleAutoConnect(id: string) {
-		updateServers(current => current.map(s => s.id === id ? { ...s, autoConnect: !s.autoConnect } : s));
+		updateServers(current => current.map(s => s.id === id ? { ...s, autoConnect: !s.autoConnect, manuallyDisconnected: false } : s));
 	}
 
 	function removeServer(id: string) {

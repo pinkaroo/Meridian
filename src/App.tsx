@@ -125,6 +125,7 @@ export default function App() {
 			const toConnect = servers.filter(s =>
 				s.enabled &&
 				s.autoConnect &&
+				!s.manuallyDisconnected &&
 				(s.status === "disconnected" || s.status === "error")
 			);
 
@@ -132,12 +133,17 @@ export default function App() {
 
 			mcpConnectInFlight.current = true;
 			try {
-				let updatedServers = [...servers];
-				let changed = false;
-
 				for (const srv of toConnect) {
-					updatedServers = updatedServers.map(s => s.id === srv.id ? { ...s, status: "connecting" } : s);
-					storeRef.current.updateSettings({ mcpServers: updatedServers });
+					// Verify one last time before connecting that the user didn't toggle it off or disconnect it manually in the meantime
+					const currentServers = storeRef.current.settings.mcpServers || [];
+					const freshSrv = currentServers.find(s => s.id === srv.id);
+					if (!freshSrv || !freshSrv.enabled || !freshSrv.autoConnect || freshSrv.manuallyDisconnected || (freshSrv.status !== "disconnected" && freshSrv.status !== "error")) {
+						continue;
+					}
+
+					storeRef.current.updateSettings({
+						mcpServers: (storeRef.current.settings.mcpServers || []).map(s => s.id === srv.id ? { ...s, status: "connecting" } : s)
+					});
 
 					try {
 						const isRoblox = srv.id.toLowerCase().includes("roblox") || srv.name.toLowerCase().includes("roblox studio");
@@ -150,14 +156,14 @@ export default function App() {
 							new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), isRoblox ? 20000 : 10000)),
 						]);
 
-						updatedServers = updatedServers.map(s => s.id === srv.id ? { ...s, status: "connected", tools, error: undefined } : s);
+						storeRef.current.updateSettings({
+							mcpServers: (storeRef.current.settings.mcpServers || []).map(s => s.id === srv.id ? { ...s, status: "connected", tools, error: undefined } : s)
+						});
 					} catch (e) {
-						updatedServers = updatedServers.map(s => s.id === srv.id ? { ...s, status: "error", error: String(e) } : s);
+						storeRef.current.updateSettings({
+							mcpServers: (storeRef.current.settings.mcpServers || []).map(s => s.id === srv.id ? { ...s, status: "error", error: String(e) } : s)
+						});
 					}
-					changed = true;
-				}
-				if (changed) {
-					storeRef.current.updateSettings({ mcpServers: updatedServers });
 				}
 			} finally {
 				mcpConnectInFlight.current = false;
