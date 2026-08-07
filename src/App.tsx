@@ -115,6 +115,56 @@ export default function App() {
 		})();
 		return () => { try { unlisten?.(); } catch {} };
 	}, []);
+	const mcpConnectInFlight = useRef(false);
+	useEffect(() => {
+		const timer = setInterval(async () => {
+			if (mcpConnectInFlight.current) return;
+			const servers = storeRef.current.settings.mcpServers;
+			if (!servers) return;
+
+			const toConnect = servers.filter(s =>
+				s.enabled &&
+				s.autoConnect &&
+				(s.status === "disconnected" || s.status === "error")
+			);
+
+			if (toConnect.length === 0) return;
+
+			mcpConnectInFlight.current = true;
+			try {
+				let updatedServers = [...servers];
+				let changed = false;
+
+				for (const srv of toConnect) {
+					updatedServers = updatedServers.map(s => s.id === srv.id ? { ...s, status: "connecting" } : s);
+					storeRef.current.updateSettings({ mcpServers: updatedServers });
+
+					try {
+						const isRoblox = srv.id.toLowerCase().includes("roblox") || srv.name.toLowerCase().includes("roblox studio");
+						const connectionServer = isRoblox
+							? { ...srv, transport: "stdio" as const, command: "cmd.exe", args: ["/c", "%LOCALAPPDATA%\\Roblox\\mcp.bat"] }
+							: srv;
+
+						const tools = await Promise.race([
+							mcpConnect(connectionServer),
+							new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), isRoblox ? 20000 : 10000)),
+						]);
+
+						updatedServers = updatedServers.map(s => s.id === srv.id ? { ...s, status: "connected", tools, error: undefined } : s);
+					} catch (e) {
+						updatedServers = updatedServers.map(s => s.id === srv.id ? { ...s, status: "error", error: String(e) } : s);
+					}
+					changed = true;
+				}
+				if (changed) {
+					storeRef.current.updateSettings({ mcpServers: updatedServers });
+				}
+			} finally {
+				mcpConnectInFlight.current = false;
+			}
+		}, 3000);
+		return () => clearInterval(timer);
+	}, []);
 	const [showSettings, setShowSettings] = useState(false);
 	const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined);
 	const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);

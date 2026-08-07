@@ -154,39 +154,6 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 		onUpdate(next);
 	}
 
-	useEffect(() => {
-		// A persisted `connecting` state can survive an interrupted app session.
-		// Treat it as disconnected so auto-connect can recover on the next launch.
-		const toConnect = servers.filter(s => s.enabled && s.autoConnect && (s.status === "disconnected" || s.status === "connecting"));
-		(async () => {
-			for (const srv of toConnect) {
-				try { await connectServer(srv, true); } catch { /* per-server error already stored */ }
-			}
-		})();
-	}, []);
-	useEffect(() => {
-		const timer = window.setInterval(() => {
-			if (autoProbeInFlight.current) return;
-			const retryable = serversRef.current.filter(s => s.autoConnect && s.enabled && (s.status === "disconnected" || s.status === "error") && (s.id.toLowerCase().includes("roblox") || s.name.toLowerCase().includes("roblox studio")));
-			if (retryable.length) {
-				autoProbeInFlight.current = true;
-				void connectServer(retryable[0], true).catch(() => {}).finally(() => { autoProbeInFlight.current = false; });
-			}
-		}, 500);
-		return () => window.clearInterval(timer);
-	}, []);
-	useEffect(() => {
-		const timer = window.setInterval(() => {
-			const stuck = serversRef.current.filter(s => s.status === "connecting");
-			if (stuck.length) {
-				setConnectingId(current => stuck.some(s => s.id === current) ? null : current);
-				updateServers(current => current.map(s => s.status === "connecting"
-					? { ...s, status: "error" as const, error: "Roblox MCP did not respond in time. Restart Studio MCP and retry." }
-					: s));
-			}
-		}, 10000);
-		return () => window.clearInterval(timer);
-	}, []);
 
 	async function connectServer(server: McpServer, silent = false) {
 		if (!silent) setConnectingId(server.id);
