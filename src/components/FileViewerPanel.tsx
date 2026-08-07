@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 import type { ConvFile } from "../types";
 
 interface FileViewerPanelProps {
@@ -35,21 +36,49 @@ export function FileViewerPanel({ open, onClose, files, onDelete, onRename }: Fi
 	const selected = useMemo(() => files.find(f => f.id === selectedId) ?? null, [files, selectedId]);
 	const sorted = useMemo(() => [...files].sort((a, b) => b.createdAt - a.createdAt), [files]);
 
-	const handleDownload = (file: ConvFile) => {
-		const blob = file.isBinary
-			? (() => {
-				const bytes = Uint8Array.from(atob(file.content), c => c.charCodeAt(0));
-				return new Blob([bytes], { type: file.mimeType });
-			})()
-			: new Blob([file.content], { type: file.mimeType });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = file.name;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
+	const handleDownload = async (file: ConvFile) => {
+		try {
+			if ((window as any).__TAURI_INTERNALS__) {
+				const { save } = await import('@tauri-apps/plugin-dialog');
+				const { writeFile } = await import('@tauri-apps/plugin-fs');
+				const path = await save({ defaultPath: file.name });
+				if (path) {
+					const bytes = file.isBinary 
+						? Uint8Array.from(atob(file.content), c => c.charCodeAt(0))
+						: new TextEncoder().encode(file.content);
+					await writeFile(path, bytes);
+					toast.success(`Downloaded to ${path}`);
+				}
+			} else {
+				const blob = file.isBinary
+					? (() => {
+						const bytes = Uint8Array.from(atob(file.content), c => c.charCodeAt(0));
+						return new Blob([bytes], { type: file.mimeType });
+					})()
+					: new Blob([file.content], { type: file.mimeType });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = file.name;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+				toast.success(`Downloaded ${file.name}`);
+			}
+		} catch (e) {
+			console.error(e);
+			toast.error("Failed to download");
+		}
+	};
+
+	const handleCopy = async (text: string) => {
+		try {
+			await navigator.clipboard.writeText(text);
+			toast.success("Copied to clipboard");
+		} catch (e) {
+			toast.error("Failed to copy");
+		}
 	};
 
 	const commitRename = (file: ConvFile) => {
@@ -180,7 +209,7 @@ export function FileViewerPanel({ open, onClose, files, onDelete, onRename }: Fi
 										<Download className="h-3.5 w-3.5 mr-1.5" />
 										Download
 									</Button>
-									{selected.content != null && <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(selected.content ?? "")}>
+									{selected.content != null && <Button size="sm" variant="outline" onClick={() => handleCopy(selected.content ?? "")}>
 										<Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
 									</Button>}
 									</div>

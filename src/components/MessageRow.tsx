@@ -8,8 +8,9 @@ import { memo, useState, useRef, useEffect, useMemo } from "react";
 	import {
 		Pencil, RefreshCw, Bookmark, BookmarkPlus, Trash2, Copy, Check,
 		ChevronsRight, Clock, Merge, Search, Brain, Paperclip, History, RotateCcw,
-		GitBranch, Quote, X, ChevronDown,
+		GitBranch, Quote, X, ChevronDown, Download,
 	} from "lucide-react";
+	import toast from "react-hot-toast";
 	import MarkdownRenderer from "./MarkdownRenderer";
 	import { languageFromName } from "../lib/languageFromName";
 	import { useLightbox } from "./ImageLightbox";
@@ -360,16 +361,65 @@ function MessageRowImpl({
 
 function PresentedFile({ name, content, mimeType: _mimeType, size }: { name: string; content: string; mimeType: string; size: number }) {
 	const [preview, setPreview] = useState(false);
+
+	const handleDownload = async (e: React.MouseEvent) => {
+		e.stopPropagation();
+		try {
+			if ((window as any).__TAURI_INTERNALS__) {
+				const { save } = await import('@tauri-apps/plugin-dialog');
+				const { writeFile } = await import('@tauri-apps/plugin-fs');
+				const path = await save({ defaultPath: name });
+				if (path) {
+					const bytes = new TextEncoder().encode(content);
+					await writeFile(path, bytes);
+					toast.success(`Downloaded to ${path}`);
+				}
+			} else {
+				const blob = new Blob([content], { type: _mimeType || "text/plain" });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = name;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+				toast.success(`Downloaded ${name}`);
+			}
+		} catch (err) {
+			console.error(err);
+			toast.error("Failed to download");
+		}
+	};
+
+	const handleCopy = async (e: React.MouseEvent) => {
+		e.stopPropagation();
+		try {
+			await navigator.clipboard.writeText(content);
+			toast.success("Copied to clipboard");
+		} catch (err) {
+			toast.error("Failed to copy");
+		}
+	};
+
 	return (
 		<>
 			<div className="my-2">
 				<div
-					className="group/file flex h-32 w-32 cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-card transition-transform hover:scale-[1.02]"
+					className="group/file flex h-32 w-48 cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-card transition-transform hover:scale-[1.02] relative"
 					onClick={() => setPreview(true)}
 					title="Click to preview"
 				>
-					<div className="flex-1 overflow-hidden p-2 font-mono text-[9px] leading-tight text-muted-foreground">
+					<div className="flex-1 overflow-hidden p-2 font-mono text-[9px] leading-tight text-muted-foreground relative">
 						<pre className="whitespace-pre-wrap break-words">{content.split("\n").slice(0, 6).join("\n")}</pre>
+						<div className="absolute inset-0 bg-gradient-to-t from-card/80 via-transparent to-transparent opacity-0 group-hover/file:opacity-100 transition-opacity flex items-center justify-center gap-2">
+							<Button size="icon" variant="secondary" className="h-7 w-7 rounded-full shadow-md" onClick={handleDownload} title="Download">
+								<Download className="h-3.5 w-3.5" />
+							</Button>
+							<Button size="icon" variant="secondary" className="h-7 w-7 rounded-full shadow-md" onClick={handleCopy} title="Copy">
+								<Copy className="h-3.5 w-3.5" />
+							</Button>
+						</div>
 					</div>
 					<div className="flex items-center gap-1 border-t bg-muted/40 px-1.5 py-1">
 						<Paperclip className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
@@ -386,9 +436,17 @@ function PresentedFile({ name, content, mimeType: _mimeType, size }: { name: str
 								<span className="truncate text-sm font-medium">{name}</span>
 								<span className="shrink-0 text-xs text-muted-foreground">({size.toLocaleString()} bytes)</span>
 							</div>
-							<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPreview(false)}>
-								<X className="h-4 w-4" />
-							</Button>
+							<div className="flex items-center gap-2">
+								<Button variant="ghost" size="sm" className="h-7 text-xs px-2 flex items-center gap-1.5" onClick={handleCopy}>
+									<Copy className="h-3.5 w-3.5" /> Copy
+								</Button>
+								<Button variant="ghost" size="sm" className="h-7 text-xs px-2 flex items-center gap-1.5" onClick={handleDownload}>
+									<Download className="h-3.5 w-3.5" /> Download
+								</Button>
+								<Button variant="ghost" size="icon" className="h-7 w-7 ml-2 border-l rounded-none pl-3" onClick={() => setPreview(false)}>
+									<X className="h-4 w-4" />
+								</Button>
+							</div>
 						</div>
 						<div className="flex-1 overflow-auto p-4"><MarkdownRenderer content={"```" + languageFromName(name) + "\n" + content + "\n```"} /></div>
 					</div>

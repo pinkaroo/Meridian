@@ -15,15 +15,27 @@
     {
       "identifier": "fs:default",
       "allow": [
-        { "path": "$APPDATA" },
-        { "path": "$APPDATA/**" },
-        { "path": "$APPCONFIG" },
-        { "path": "$APPCONFIG/**" },
-        { "path": "$APPLOCALDATA" },
-        { "path": "$APPLOCALDATA/**" }
+        {
+          "path": "$APPDATA"
+        },
+        {
+          "path": "$APPDATA/**"
+        },
+        {
+          "path": "$APPCONFIG"
+        },
+        {
+          "path": "$APPCONFIG/**"
+        },
+        {
+          "path": "$APPLOCALDATA"
+        },
+        {
+          "path": "$APPLOCALDATA/**"
+        }
       ]
     },
-	"fs:allow-appdata-read",
+    "fs:allow-appdata-read",
     "fs:allow-appdata-read-recursive",
     "fs:allow-appdata-write",
     "fs:allow-appdata-write-recursive",
@@ -34,6 +46,7 @@
     "fs:allow-read-file",
     "fs:allow-write-file",
     "fs:allow-rename",
-    "os:default"
+    "os:default",
+    "dialog:default"
   ]
 }
