@@ -153,17 +153,29 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 
 
 	async function connectServer(server: McpServer, silent = false) {
+		const currentStatus = serversRef.current.find(s => s.id === server.id)?.status;
+		if (currentStatus === "connecting") return;
+
 		if (!silent) setConnectingId(server.id);
 		setError(null);
 		const patchStatus = (patch: Partial<McpServer>) => {
 			if (!mounted.current) return;
 			updateServers(current => current.map(s => s.id === server.id ? { ...s, ...patch } : s));
 		};
+		const patchStatusIfConnecting = (patch: Partial<McpServer>) => {
+			if (!mounted.current) return;
+			updateServers(current => current.map(s => {
+				if (s.id === server.id && s.status === "connecting") {
+					return { ...s, ...patch };
+				}
+				return s;
+			}));
+		};
 		patchStatus({ status: "connecting" });
 		// Native invokes can outlive a rejected promise during a crashed stdio
 		// process. Keep the UI recoverable even if that happens.
 		const watchdog = window.setTimeout(() => {
-			patchStatus({ status: "error", error: "MCP connection did not respond. Restart Roblox Studio MCP and retry." });
+			patchStatusIfConnecting({ status: "error", error: "MCP connection did not respond. Restart Roblox Studio MCP and retry." });
 			if (!silent && mounted.current) setConnectingId(null);
 		}, 10000);
 		try {
@@ -175,10 +187,10 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 				mcpConnect(connectionServer),
 				new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Roblox Studio MCP did not provide tools in time. Run the handshake probe or retry.")), 20000)),
 			]);
-			patchStatus({ status: "connected", tools, error: undefined, manuallyDisconnected: false });
+			patchStatusIfConnecting({ status: "connected", tools, error: undefined, manuallyDisconnected: false });
 		} catch (err: unknown) {
 			const msg = String(err);
-			patchStatus({ status: "error", error: msg });
+			patchStatusIfConnecting({ status: "error", error: msg });
 			if (!silent && mounted.current) setError(msg);
 			throw err;
 		} finally {
