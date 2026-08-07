@@ -786,13 +786,7 @@ if (approvalReason) {
     return map[ext] || "text/plain";
   };
 
-  if (name === "save-to-conversation") {
-    const fname = params.name || params.path || "untitled.txt";
-    const content = params.body ?? params.content ?? "";
-    if (!cb.onConvFileAdded) return finishTool(cb, assistantMsgId, toolId, "", "save-to-conversation not available", "error");
-    cb.onConvFileAdded({ name: fname, path: `conv:${fname}`, mimeType: guessConvMime(fname), size: content.length, content, isBinary: false });
-    return finishTool(cb, assistantMsgId, toolId, `Saved to conversation: ${fname} (${content.length} bytes)`, undefined, "complete");
-  }
+
   if (name === "rename-conv-file") {
     const oldName = params.from || params.old || params.name;
     const newName = params.to || params.new;
@@ -880,6 +874,9 @@ if (approvalReason) {
       segs.push({ kind: "file", name: fname, content, mimeType, size: content.length });
       return { segments: segs };
     });
+    if (cb.onConvFileAdded) {
+      cb.onConvFileAdded({ name: fname, path: `conv:${fname}`, mimeType, size: content.length, content, isBinary: false });
+    }
     return finishTool(cb, assistantMsgId, toolId, `Presented file: ${fname} (${content.length} bytes)`, undefined, "complete");
   }
 

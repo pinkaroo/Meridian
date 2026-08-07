@@ -316,7 +316,6 @@ ${TOOL_CLOSE}
 
 24. **get-skill-secret** â€” Read a decrypted secret value the user has stored in skill settings. Usage: \`skill="<skill-name>" field="<field-key>"\`. Returns the raw secret string on success, or an \`ERROR:\` line. Only works for fields the skill's \`settings.json\` marks as \`secret: true\`. The vault must be unlocked by the user first; if it isn't, the tool returns an error telling you to ask. Use this when a skill (e.g. \`deploy-to-vercel\`, \`claude-api\`) needs an API key or token and the system prompt shows \`[user-configured: <field>]\` next to that skill. Never log, echo, or write the returned secret to a file the user didn't request.
 
-24. **save-to-conversation** -- Save content directly into the conversation's file panel without writing to disk. Use this for ephemeral artifacts (drafts, generated snippets, docs the user just wants to see) that don't belong on the filesystem. Usage: \`name="filename.ext"\` attr, content in the body. Files appear in the top-right file panel and persist with the conversation.
 
 25. **rename-conv-file** -- Rename a file in the conversation panel. Usage: \`from="old-name.txt" to="new-name.txt"\`. Use this especially after editing a generically-named pasted file (\`pasted-*.txt\`, \`untitled*\`) to give it a meaningful name like the AI title flow does for conversations.
 
