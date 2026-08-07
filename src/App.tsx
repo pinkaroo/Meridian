@@ -156,13 +156,22 @@ export default function App() {
 							new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), isRoblox ? 20000 : 10000)),
 						]);
 
-						storeRef.current.updateSettings({
-							mcpServers: (storeRef.current.settings.mcpServers || []).map(s => s.id === srv.id ? { ...s, status: "connected", tools, error: undefined } : s)
-						});
+						// Verify the user didn't toggle it off or disconnect it manually during the connection attempt
+						const postServers = storeRef.current.settings.mcpServers || [];
+						const postSrv = postServers.find(s => s.id === srv.id);
+						if (postSrv && postSrv.status === "connecting") {
+							storeRef.current.updateSettings({
+								mcpServers: postServers.map(s => s.id === srv.id ? { ...s, status: "connected", tools, error: undefined } : s)
+							});
+						}
 					} catch (e) {
-						storeRef.current.updateSettings({
-							mcpServers: (storeRef.current.settings.mcpServers || []).map(s => s.id === srv.id ? { ...s, status: "error", error: String(e) } : s)
-						});
+						const postServers = storeRef.current.settings.mcpServers || [];
+						const postSrv = postServers.find(s => s.id === srv.id);
+						if (postSrv && postSrv.status === "connecting") {
+							storeRef.current.updateSettings({
+								mcpServers: postServers.map(s => s.id === srv.id ? { ...s, status: "error", error: String(e) } : s)
+							});
+						}
 					}
 				}
 			} finally {

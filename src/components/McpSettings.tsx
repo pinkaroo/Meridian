@@ -143,10 +143,7 @@ export default function McpSettings({ servers, onUpdate, onClose, embedded = fal
 	const serversRef = useRef(servers);
 
 	useEffect(() => { serversRef.current = servers; }, [servers]);
-	useEffect(() => {
-		const roblox = servers.find(s => s.id.toLowerCase().includes("roblox") || s.name.toLowerCase().includes("roblox studio"));
-		if (roblox && !roblox.autoConnect) updateServers(current => current.map(s => s.id === roblox.id ? { ...s, autoConnect: true } : s));
-	}, [servers]);
+
 
 	function updateServers(updater: McpServer[] | ((current: McpServer[]) => McpServer[])) {
 		const next = typeof updater === "function" ? updater(serversRef.current) : updater;
